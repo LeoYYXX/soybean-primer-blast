@@ -1,0 +1,44 @@
+# Genome data files (too large for GitHub — download separately)
+*.fa
+*.fai
+*.gff3
+*.gtf
+
+# BLAST database cache
+.primer_blast_cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp.*
+*.tmp
+
+# Test results (regenerate locally)
+test_results_v1.0/
+test_results_v1.0_1000genes/
+
+# Screenshots
+*.png
+*.jpg
+*.jpeg

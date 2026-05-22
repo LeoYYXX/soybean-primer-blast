@@ -1,0 +1,1662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Soybean Primer-BLAST</title>
+<style>
+/* === Reset & Base === */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px; line-height: 1.5; color: #212529; background: #f0f0f0;
+}
+a { color: #2b5f8a; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* === Layout === */
+.container { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
+.header {
+  background: linear-gradient(135deg, #1a3a4a 0%, #2b5f8a 100%);
+  color: #fff; padding: 28px 0 22px; margin-bottom: 24px;
+}
+.header .container { padding-bottom: 0; }
+.header h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.5px; }
+.header p { font-size: 14px; opacity: 0.85; margin-top: 4px; }
+
+/* === Section Cards === */
+.card {
+  background: #fff; border: 1px solid #ddd; border-radius: 6px;
+  margin-bottom: 16px; overflow: hidden;
+}
+.card-header {
+  background: #f5f5f5; padding: 12px 18px; cursor: pointer;
+  display: flex; justify-content: space-between; align-items: center;
+  user-select: none; border-bottom: 1px solid #ddd;
+  font-weight: 600; font-size: 14px; color: #2b5f8a;
+}
+.card-header:hover { background: #eef2f6; }
+.card-header .arrow { font-size: 11px; transition: transform 0.2s; }
+.collapsed .card-header { border-bottom: none; }
+.collapsed .card-header .arrow { transform: rotate(-90deg); }
+.collapsed .card-body { display: none; }
+.card-body { padding: 16px 18px; }
+
+/* === Form Elements === */
+label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; color: #333; }
+input[type="text"], input[type="number"], textarea, select {
+  width: 100%; padding: 8px 10px; border: 1px solid #bbb; border-radius: 4px;
+  font-size: 14px; font-family: inherit; transition: border-color 0.15s;
+}
+input:focus, textarea:focus, select:focus { outline: none; border-color: #2b5f8a; box-shadow: 0 0 0 2px rgba(43,95,138,0.15); }
+textarea { resize: vertical; font-family: "Consolas", "Courier New", monospace; font-size: 13px; }
+
+/* === Tabs (Input Mode) === */
+.tabs { display: flex; border-bottom: 2px solid #ddd; margin-bottom: 16px; }
+.tab {
+  padding: 10px 22px; cursor: pointer; border: none; background: transparent;
+  font-size: 14px; font-weight: 600; color: #666;
+  border-bottom: 2px solid transparent; margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab:hover { color: #2b5f8a; }
+.tab.active { color: #2b5f8a; border-bottom-color: #2b5f8a; }
+
+/* === Form Grid === */
+.form-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.form-row > * { flex: 1; min-width: 160px; }
+.form-row.small > * { flex: 0 0 auto; min-width: 100px; }
+.form-separator { margin: 14px 0; border: none; border-top: 1px solid #eee; }
+.hint { font-size: 12px; color: #888; margin-top: 2px; }
+
+/* === Autocomplete Dropdown === */
+.autocomplete-wrap { position: relative; }
+.autocomplete-dropdown {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
+  background: #fff; border: 1px solid #bbb; border-top: none;
+  border-radius: 0 0 4px 4px; max-height: 240px; overflow-y: auto;
+  display: none; box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+.autocomplete-dropdown.active { display: block; }
+.autocomplete-item {
+  padding: 8px 12px; cursor: pointer; font-size: 13px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.autocomplete-item:hover, .autocomplete-item.selected { background: #e8f0f8; color: #2b5f8a; }
+
+/* === Buttons === */
+.btn {
+  display: inline-block; padding: 10px 28px; font-size: 15px; font-weight: 600;
+  border: none; border-radius: 4px; cursor: pointer; transition: background 0.15s;
+}
+.btn-primary { background: #2b5f8a; color: #fff; }
+.btn-primary:hover { background: #1e4465; }
+.btn-primary:disabled { background: #8aaec8; cursor: not-allowed; }
+
+/* === Loading Overlay === */
+.overlay {
+  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.45); z-index: 999;
+  justify-content: center; align-items: center; flex-direction: column;
+}
+.overlay.active { display: flex; }
+.spinner {
+  width: 52px; height: 52px; border: 4px solid rgba(255,255,255,0.3);
+  border-top-color: #fff; border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.overlay-text { color: #fff; margin-top: 16px; font-size: 16px; font-weight: 500; }
+
+/* === Results === */
+.results { display: none; }
+.results.active { display: block; }
+.results-summary {
+  padding: 14px 18px; background: #f8f9fa; border: 1px solid #ddd;
+  border-radius: 6px; margin-bottom: 16px; font-size: 14px;
+}
+.results-summary .elapsed { color: #888; font-size: 13px; }
+.results-summary .badge { margin-left: 8px; }
+.badge {
+  display: inline-block; padding: 2px 10px; border-radius: 10px;
+  font-size: 12px; font-weight: 600;
+}
+.badge-pass { background: #d4edda; color: #155724; }
+.badge-fail { background: #f8d7da; color: #721c24; }
+
+/* === Table === */
+.table-wrap { overflow-x: auto; border: 1px solid #ddd; border-radius: 6px; }
+table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+  white-space: nowrap;
+}
+thead { background: #f5f5f5; }
+th {
+  padding: 10px 12px; text-align: left; font-weight: 600; color: #555;
+  border-bottom: 2px solid #ddd; font-size: 12px; text-transform: uppercase;
+}
+td { padding: 8px 12px; border-bottom: 1px solid #eee; cursor: pointer; }
+tr:hover td { background: #f8fafc; }
+.seq { font-family: "Consolas","Courier New",monospace; color: #2b5f8a; max-width: 180px; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: middle; }
+.num { text-align: right; }
+.specific { text-align: center; }
+
+/* === Strand badge === */
+.strand-plus { background: #d4edda; color: #155724; }
+.strand-minus { background: #f8d7da; color: #721c24; }
+
+/* === Detailed Primer Reports (NCBI-style) === */
+.detailed-reports { margin-top: 24px; }
+.detailed-reports h2 {
+  font-size: 18px; color: #2b5f8a; border-bottom: 2px solid #2b5f8a;
+  padding-bottom: 8px; margin-bottom: 20px;
+}
+.pair-card {
+  background: #fff; border: 1px solid #ddd; border-radius: 6px;
+  margin-bottom: 24px; overflow: hidden;
+}
+.pair-card-header {
+  background: #e9ecef; padding: 10px 16px;
+  font-weight: 700; font-size: 14px; color: #333;
+  border-bottom: 1px solid #ddd;
+}
+.pair-card-body { padding: 14px 16px; }
+
+/* NCBI-style sub-table within pair card */
+.sub-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 14px; }
+.sub-table th {
+  background: #f5f5f5; padding: 6px 10px; text-align: left; font-weight: 600;
+  color: #555; font-size: 11px; text-transform: uppercase; border: 1px solid #ddd;
+}
+.sub-table td { padding: 6px 10px; border: 1px solid #ddd; }
+.sub-table .seq-col { font-family: "Consolas","Courier New",monospace; color: #2b5f8a; max-width: 220px; word-break: break-all; }
+.sub-table .num-col { text-align: right; }
+.primer-label { font-weight: 600; color: #555; font-size: 12px; }
+
+/* Product on target section */
+.target-section { margin-top: 14px; }
+.target-section h4 {
+  font-size: 13px; color: #2b5f8a; font-weight: 600;
+  border-bottom: 1px solid #ddd; padding-bottom: 6px; margin-bottom: 10px;
+}
+.target-info { font-size: 12px; color: #555; margin-bottom: 8px; }
+.target-info .chrom { font-family: "Consolas","Courier New",monospace; color: #2b5f8a; font-weight: 600; }
+.target-info .feat { color: #666; font-style: italic; }
+
+/* Alignment view — single monospace text block, all characters naturally aligned */
+.align-view { margin: 8px 0; background: #fafbfc; padding: 10px 14px; border-radius: 4px; overflow-x: auto; }
+.align-block { font-family: "Consolas","Courier New",monospace; font-size: 12px; line-height: 1.7; white-space: pre; color: #333; }
+.align-block .al { color: #888; }
+.align-block .ac { color: #999; }
+.align-block .as { color: #2b5f8a; }
+.align-block .am { color: #333; }
+.align-block .ap { color: #721c24; font-weight: 600; }
+
+/* Off-target detail section */
+.offtarget-section { margin-top: 14px; }
+.offtarget-section h4 { font-size: 13px; color: #721c24; font-weight: 600; border-bottom: 1px solid #f5c6cb; padding-bottom: 6px; margin-bottom: 10px; }
+.unintended-template {
+  padding: 8px 14px; margin-bottom: 12px; background: #fefbfb;
+  border: 1px solid #f0d0d0; border-radius: 4px;
+}
+.unintended-template:last-child { margin-bottom: 0; }
+.unintended-header {
+  font-size: 13px; color: #333; font-weight: 600;
+  padding: 4px 0 8px 0; border-bottom: 1px solid #f5e0e0; margin-bottom: 8px;
+}
+.primer-binding {
+  padding: 4px 0 8px 0; margin-bottom: 2px;
+  border-bottom: 1px dotted #f0e0e0;
+}
+.primer-binding:last-child { border-bottom: none; }
+
+/* Product size line */
+.product-size-line {
+  font-size: 14px; font-weight: 600; color: #333;
+  padding: 8px 0; border-top: 1px solid #eee;
+}
+
+/* === Error === */
+.error-box {
+  display: none; padding: 14px 18px; background: #fff3f3; border: 1px solid #f5c6cb;
+  border-radius: 6px; color: #721c24; margin-bottom: 16px;
+}
+.error-box.active { display: block; }
+.error-box .error-title { font-weight: 600; margin-bottom: 4px; }
+.suggestions { margin-top: 6px; font-size: 13px; }
+.suggestions a { cursor: pointer; color: #2b5f8a; margin-right: 8px; }
+.suggestions a:hover { text-decoration: underline; }
+
+/* === Checkbox Toggle === */
+.toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.toggle-row input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+.toggle-row label { margin-bottom: 0; cursor: pointer; font-weight: 500; }
+
+/* === Target custom coords === */
+.inline-fields { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.inline-fields input { width: 100px; }
+.inline-fields span { color: #888; font-size: 13px; }
+
+/* === Gene Structure SVG === */
+.gene-structure {
+  margin: 14px 0; padding: 14px 16px; background: #fafbfc;
+  border: 1px solid #e0e0e0; border-radius: 6px; display: none;
+}
+.gene-structure.active { display: block; }
+.gene-structure h4 {
+  font-size: 13px; color: #2b5f8a; margin: 0 0 10px 0;
+}
+.gene-structure svg { width: 100%; }
+.gene-structure text {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 11px; fill: #333;
+}
+/* Expanded view blocks */
+.gene-structure .promoter-block { fill: #c8e6c9; stroke: #81c784; stroke-width: 1; cursor: pointer; transition: fill 0.15s; }
+.gene-structure .promoter-block:hover { fill: #a5d6a7; }
+.gene-structure .downstream-block { fill: #e1bee7; stroke: #ce93d8; stroke-width: 1; cursor: pointer; transition: fill 0.15s; }
+.gene-structure .downstream-block:hover { fill: #ce93d8; }
+.gene-structure .exon-block { fill: #2b5f8a; stroke: #1a3a4a; stroke-width: 1; cursor: pointer; transition: fill 0.15s; }
+.gene-structure .exon-block:hover { fill: #3a7fb5; }
+.gene-structure .intron-block { fill: #e8e8e8; stroke: #bbb; stroke-width: 0.5; cursor: pointer; transition: fill 0.15s; min-width: 4px; }
+.gene-structure .intron-block:hover { fill: #d0d0d0; }
+.gene-structure .utr5-block { fill: #bdbdbd; stroke: #999; stroke-width: 1; cursor: pointer; transition: fill 0.15s; }
+.gene-structure .utr5-block:hover { fill: #a0a0a0; }
+.gene-structure .utr3-block { fill: #d5d5d5; stroke: #aaa; stroke-width: 1; cursor: pointer; transition: fill 0.15s; }
+.gene-structure .utr3-block:hover { fill: #b8b8b8; }
+/* Pan/Zoom */
+.gene-structure svg { width: 100%; cursor: grab; }
+.gene-structure svg:active { cursor: grabbing; }
+.gene-structure svg.dragging { cursor: grabbing; }
+/* Zoom toolbar */
+.zoom-toolbar {
+  display: flex; align-items: center; gap: 4px; margin-top: 6px; font-size: 12px;
+}
+.zoom-toolbar button {
+  padding: 2px 8px; border: 1px solid #ccc; border-radius: 3px; background: #fff;
+  cursor: pointer; font-size: 12px; font-weight: 600; color: #555;
+}
+.zoom-toolbar button:hover { background: #eee; }
+.zoom-toolbar .zoom-level { color: #888; min-width: 42px; text-align: center; }
+/* Selection states */
+.gene-structure .selected-forward { stroke: #1565c0; stroke-width: 3; }
+.gene-structure .selected-reverse { stroke: #c62828; stroke-width: 3; }
+.gene-structure .in-fwd-range { stroke: #1565c0; stroke-width: 1.5; stroke-dasharray: 3,2; }
+.gene-structure .in-rev-range { stroke: #c62828; stroke-width: 1.5; stroke-dasharray: 3,2; }
+.gene-structure .forward-overlay { fill: rgba(21,101,192,0.35); pointer-events: none; }
+.gene-structure .reverse-overlay { fill: rgba(198,40,40,0.35); pointer-events: none; }
+.gene-structure .intron-line { stroke: #999; stroke-width: 1.2; fill: none; stroke-linecap: round; pointer-events: none; }
+.gene-structure .scale-line { stroke: #bbb; stroke-width: 1; }
+.gene-structure .scale-tick { stroke: #bbb; stroke-width: 1; }
+.gene-structure .gene-boundary { stroke: #555; stroke-width: 1.5; stroke-dasharray: 4,3; fill: none; }
+.gene-structure .label-tag { font-size: 9px; font-weight: 600; pointer-events: none; }
+.gene-structure .block-label { font-size: 9px; font-weight: 600; fill: #333; pointer-events: none; }
+.gene-structure .legend { font-size: 10px; }
+.gene-structure .legend rect { stroke-width: 0.5; }
+/* Selection status bar */
+.selection-status {
+  margin-top: 8px; padding: 6px 12px; background: #fff; border: 1px solid #ddd;
+  border-radius: 4px; font-size: 13px; display: none; align-items: center; gap: 10px;
+}
+.selection-status.active { display: flex; }
+.selection-status .fwd-badge { background: #1565c0; color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 12px; font-weight: 600; }
+.selection-status .rev-badge { background: #c62828; color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 12px; font-weight: 600; }
+.selection-status .reset-btn { margin-left: auto; background: #eee; border: 1px solid #ccc; padding: 3px 12px; border-radius: 3px; cursor: pointer; font-size: 12px; }
+.selection-status .reset-btn:hover { background: #ddd; }
+@media (max-width: 768px) {
+  .form-row > * { min-width: 100%; }
+  .header h1 { font-size: 20px; }
+  .tab { padding: 8px 14px; font-size: 13px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="container">
+    <h1>Soybean Primer-BLAST</h1>
+    <p>Local primer design with genome-wide specificity checking &mdash; <em>Glycine max</em> Wm82 v4.0</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- PCR Template Section -->
+  <div class="card" id="template-card">
+    <div class="card-header" onclick="toggleSection('template-body')">
+      <span>PCR Template</span><span class="arrow">&#9660;</span>
+    </div>
+    <div class="card-body" id="template-body">
+      <!-- Input Mode Tabs -->
+      <div class="tabs" id="input-tabs">
+        <button class="tab active" data-mode="gene" onclick="switchMode('gene')">Gene</button>
+        <button class="tab" data-mode="region" onclick="switchMode('region')">Region</button>
+        <button class="tab" data-mode="sequence" onclick="switchMode('sequence')">Sequence</button>
+      </div>
+
+      <!-- Gene Input -->
+      <div class="input-panel" id="panel-gene">
+        <div class="form-row">
+          <div style="flex:1;">
+            <label for="gene-input">Gene ID</label>
+            <div class="autocomplete-wrap">
+              <input type="text" id="gene-input" placeholder="e.g. Glyma.01G000100"
+                     autocomplete="off" oninput="onGeneInput()" onkeydown="onGeneKeydown(event)">
+              <div class="autocomplete-dropdown" id="gene-dropdown"></div>
+            </div>
+            <div class="hint">Enter a soybean gene ID from the Gmax Wm82 v4.0 annotation</div>
+          </div>
+        </div>
+        <div class="gene-structure" id="gene-structure">
+          <h4>Gene Structure &mdash; Click regions to select primer binding sites</h4>
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:12px;">
+            <label style="margin:0; font-weight:500; white-space:nowrap;">Upstream (kb):</label>
+            <input type="number" id="upstream-kb" value="1" min="0" max="20" step="1" style="width:52px; padding:3px 4px; font-size:12px;" onchange="onFlankChange()">
+            <label style="margin:0; font-weight:500; white-space:nowrap; margin-left:8px;">Downstream (kb):</label>
+            <input type="number" id="downstream-kb" value="4" min="0" max="20" step="1" style="width:52px; padding:3px 4px; font-size:12px;" onchange="onFlankChange()">
+            <span style="color:#888; font-size:11px;">(1 kb per block)</span>
+          </div>
+          <div id="gene-structure-svg"></div>
+          <div class="zoom-toolbar">
+            <button onclick="zoomGene(-0.3)" title="Zoom out">−</button>
+            <button onclick="zoomGene(-0.1)" title="Zoom out a bit">⁻</button>
+            <span class="zoom-level" id="zoom-level">100%</span>
+            <button onclick="zoomGene(0.1)" title="Zoom in a bit">⁺</button>
+            <button onclick="zoomGene(0.3)" title="Zoom in">+</button>
+            <button onclick="resetGeneView()" title="Reset view" style="margin-left:6px;">↺</button>
+          </div>
+          <div class="selection-status" id="selection-status">
+            <span id="sel-fwd-text"></span>
+            <span id="sel-rev-text"></span>
+            <span id="sel-prod-text" style="color:#666;"></span>
+            <button class="reset-btn" onclick="resetSelection()">Clear</button>
+          </div>
+          <div class="hint" style="margin-top:6px;"><span style="color:#1565c0;font-weight:600;">Forward</span> / <span style="color:#c62828;font-weight:600;">Reverse</span> — click to select. <strong>Shift+click</strong> to extend range across multiple blocks. <strong>Drag</strong> to pan, <strong>scroll</strong> to zoom.</div>
+        </div>
+      </div>
+
+      <!-- Region Input -->
+      <div class="input-panel" id="panel-region" style="display:none;">
+        <div class="form-row">
+          <div style="flex:1;">
+            <label for="region-input">Genomic Region</label>
+            <input type="text" id="region-input" placeholder="e.g. Gm01:27344-28430 or Gm01:27344-28430:-">
+            <div class="hint">Format: chr:start-end or chr:start-end:- (for minus strand)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sequence Input -->
+      <div class="input-panel" id="panel-sequence" style="display:none;">
+        <div class="form-row">
+          <div style="flex:1;">
+            <label for="sequence-input">Template Sequence</label>
+            <textarea id="sequence-input" rows="4" placeholder="Paste FASTA sequence or enter file path..."></textarea>
+            <div class="hint">Paste DNA sequence (min 50 bp) or enter path to a FASTA file</div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="form-separator">
+
+      <!-- Target Selector -->
+      <div class="form-row">
+        <div style="flex:0 0 200px;">
+          <label for="target-select">Target Region</label>
+          <select id="target-select" onchange="onTargetChange()">
+            <option value="gene">Full gene body</option>
+            <option value="cds">CDS (coding sequence)</option>
+            <option value="utr">UTR</option>
+            <option value="custom">Custom range (start,end)</option>
+          </select>
+        </div>
+        <div class="inline-fields" id="custom-target-wrap" style="display:none; align-items: flex-end;">
+          <span>Start:</span><input type="number" id="custom-target-start" placeholder="0" min="0" value="">
+          <span>End:</span><input type="number" id="custom-target-end" placeholder="500" min="0" value="">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Primer Parameters -->
+  <div class="card collapsed" id="primer-card">
+    <div class="card-header" onclick="toggleSection('primer-body')">
+      <span>Primer Parameters</span><span class="arrow">&#9660;</span>
+    </div>
+    <div class="card-body" id="primer-body">
+      <div class="form-row">
+        <div>
+          <label for="num-return">Number of Pairs</label>
+          <input type="number" id="num-return" value="5" min="1" max="50">
+        </div>
+        <div>
+          <label for="product-min">Product Size Min (bp)</label>
+          <input type="number" id="product-min" value="200" min="50" max="50000">
+        </div>
+        <div>
+          <label for="product-max">Product Size Max (bp)</label>
+          <input type="number" id="product-max" value="800" min="50" max="50000">
+        </div>
+      </div>
+
+      <hr class="form-separator">
+
+      <div class="form-row">
+        <div>
+          <label for="primer-opt-size">Primer Opt Size (nt)</label>
+          <input type="number" id="primer-opt-size" value="20" min="15" max="35">
+        </div>
+        <div>
+          <label for="primer-min-size">Primer Min Size (nt)</label>
+          <input type="number" id="primer-min-size" value="18" min="15" max="35">
+        </div>
+        <div>
+          <label for="primer-max-size">Primer Max Size (nt)</label>
+          <input type="number" id="primer-max-size" value="25" min="15" max="35">
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-top:10px;">
+        <div>
+          <label for="primer-opt-tm">Primer Opt Tm (&deg;C)</label>
+          <input type="number" id="primer-opt-tm" value="60.0" min="50" max="75" step="0.1">
+        </div>
+        <div>
+          <label for="primer-min-tm">Primer Min Tm (&deg;C)</label>
+          <input type="number" id="primer-min-tm" value="57.0" min="50" max="75" step="0.1">
+        </div>
+        <div>
+          <label for="primer-max-tm">Primer Max Tm (&deg;C)</label>
+          <input type="number" id="primer-max-tm" value="63.0" min="50" max="75" step="0.1">
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-top:10px;">
+        <div>
+          <label for="primer-gc-min">Primer GC Min (%)</label>
+          <input type="number" id="primer-gc-min" value="35.0" min="20" max="80" step="0.5">
+        </div>
+        <div>
+          <label for="primer-gc-max">Primer GC Max (%)</label>
+          <input type="number" id="primer-gc-max" value="65.0" min="20" max="80" step="0.5">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Specificity Check -->
+  <div class="card collapsed" id="specificity-card">
+    <div class="card-header" onclick="toggleSection('specificity-body')">
+      <span>Specificity Check</span><span class="arrow">&#9660;</span>
+    </div>
+    <div class="card-body" id="specificity-body">
+      <div class="toggle-row">
+        <input type="checkbox" id="skip-specificity" onchange="onSpecificityToggle()" checked>
+        <label for="skip-specificity">Enable genome-wide BLAST specificity check</label>
+      </div>
+
+      <div id="specificity-params">
+        <div class="form-row">
+          <div>
+            <label for="max-off-target-mismatch">Max Off-target Mismatches</label>
+            <input type="number" id="max-off-target-mismatch" value="2" min="0" max="10">
+            <div class="hint">Total mismatches + gaps allowed in off-target hits</div>
+          </div>
+          <div>
+            <label for="min-3prime-match">Min 3' End Matches</label>
+            <input type="number" id="min-3prime-match" value="5" min="3" max="20">
+            <div class="hint">Consecutive matching bases required at primer 3' end</div>
+          </div>
+          <div>
+            <label for="max-amplicon-size">Max Amplicon Size (bp)</label>
+            <input type="number" id="max-amplicon-size" value="4000" min="100" max="10000">
+            <div class="hint">Maximum size for off-target amplicon detection</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Submit -->
+  <div style="text-align:center; margin: 24px 0;">
+    <button class="btn btn-primary" id="submit-btn" onclick="submitForm()">
+      Design Primers
+    </button>
+  </div>
+
+  <!-- Error Box -->
+  <div class="error-box" id="error-box">
+    <div class="error-title" id="error-title"></div>
+    <div id="error-msg"></div>
+    <div class="suggestions" id="error-suggestions"></div>
+  </div>
+
+  <!-- Results -->
+  <div class="results" id="results">
+    <div class="results-summary" id="results-summary"></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Primer</th>
+            <th>Sequence (5'&rarr;3')</th>
+            <th>Strand</th>
+            <th>Len</th>
+            <th>Tm</th>
+            <th>GC%</th>
+            <th>Self comp</th>
+            <th>Self 3' comp</th>
+            <th>Score</th>
+            <th>Product</th>
+            <th>Specific</th>
+          </tr>
+        </thead>
+        <tbody id="results-tbody"></tbody>
+      </table>
+    </div>
+    <div class="detailed-reports" id="detailed-reports"></div>
+  </div>
+
+</div>
+
+<!-- Loading Overlay -->
+<div class="overlay" id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="overlay-text" id="loading-text">Designing primers...</div>
+</div>
+
+<script>
+// === State ===
+let currentMode = "gene";
+let geneDebounce = null;
+let selectedGene = "";
+let geneStructureData = null;
+let primerSelection = {forward: null, reverse: null};  // {type, index, label, view_start, view_end}
+let svgPanX = 0;      // horizontal pan offset in SVG user units
+let svgZoom = 1;      // zoom scale (1 = 100%)
+let svgDragging = false;
+let svgDragStart = 0;
+let svgPanStart = 0;
+let svgWindowListenersSetup = false;
+
+// === Section Toggle ===
+function toggleSection(bodyId) {
+  const card = document.getElementById(bodyId).parentElement;
+  card.classList.toggle("collapsed");
+}
+
+// === Input Mode Switch ===
+function switchMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll("#input-tabs .tab").forEach(t => t.classList.remove("active"));
+  document.querySelector(`#input-tabs .tab[data-mode="${mode}"]`).classList.add("active");
+  document.querySelectorAll(".input-panel").forEach(p => p.style.display = "none");
+  document.getElementById(`panel-${mode}`).style.display = "block";
+  hideError();
+}
+
+// === Target Change ===
+function onTargetChange() {
+  var val = document.getElementById("target-select").value;
+  document.getElementById("custom-target-wrap").style.display = val === "custom" ? "flex" : "none";
+  // When user switches away from visual selection, clear it
+  if (val !== "visual" && primerSelection.forward) {
+    resetSelection();
+  }
+}
+
+// === Specificity Toggle ===
+function onSpecificityToggle() {
+  const enabled = document.getElementById("skip-specificity").checked;
+  document.getElementById("specificity-params").style.opacity = enabled ? "1" : "0.5";
+  document.querySelectorAll("#specificity-params input").forEach(i => i.disabled = !enabled);
+}
+
+// === Gene Autocomplete ===
+function onGeneInput() {
+  const q = document.getElementById("gene-input").value.trim();
+  selectedGene = "";
+  if (geneDebounce) clearTimeout(geneDebounce);
+
+  if (q.length < 2) {
+    document.getElementById("gene-dropdown").classList.remove("active");
+    return;
+  }
+
+  geneDebounce = setTimeout(async () => {
+    try {
+      const resp = await fetch(`/api/genes?q=${encodeURIComponent(q)}`);
+      const data = await resp.json();
+      const dropdown = document.getElementById("gene-dropdown");
+
+      if (!data.genes || data.genes.length === 0) {
+        dropdown.classList.remove("active");
+        return;
+      }
+
+      dropdown.innerHTML = data.genes.map((g, i) =>
+        `<div class="autocomplete-item${i === 0 ? ' selected' : ''}" data-gene="${g}" onmousedown="selectGene('${g}')">${g}</div>`
+      ).join("");
+      dropdown.classList.add("active");
+    } catch (e) {
+      // Server may not be ready
+    }
+  }, 300);
+}
+
+function onGeneKeydown(e) {
+  const dropdown = document.getElementById("gene-dropdown");
+  if (!dropdown.classList.contains("active")) return;
+
+  const items = dropdown.querySelectorAll(".autocomplete-item");
+  if (items.length === 0) return;
+
+  let idx = Array.from(items).findIndex(i => i.classList.contains("selected"));
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    items[idx].classList.remove("selected");
+    idx = e.key === "ArrowDown" ? (idx + 1) % items.length : (idx - 1 + items.length) % items.length;
+    items[idx].classList.add("selected");
+    items[idx].scrollIntoView({ block: "nearest" });
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    if (idx >= 0) selectGene(items[idx].dataset.gene);
+  } else if (e.key === "Escape") {
+    dropdown.classList.remove("active");
+  }
+}
+
+function selectGene(gene) {
+  document.getElementById("gene-input").value = gene;
+  selectedGene = gene;
+  document.getElementById("gene-dropdown").classList.remove("active");
+  loadGeneStructure(gene);
+}
+
+// === Gene Structure Visualization ===
+function loadGeneStructure(geneId) {
+  if (!geneId) return;
+  var upKb = document.getElementById("upstream-kb").value || 1;
+  var dnKb = document.getElementById("downstream-kb").value || 4;
+  var url = "/api/gene-structure/" + encodeURIComponent(geneId) + "?upstream_kb=" + upKb + "&downstream_kb=" + dnKb;
+  fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) {
+        document.getElementById("gene-structure").classList.remove("active");
+        return;
+      }
+      geneStructureData = data;
+      primerSelection = {forward: null, reverse: null};
+      svgPanX = 0;
+      svgZoom = 1;
+      updateSelectionUI();
+      renderGeneSVG(data);
+      document.getElementById("gene-structure").classList.add("active");
+    })
+    .catch(function() {
+      document.getElementById("gene-structure").classList.remove("active");
+    });
+}
+
+function onFlankChange() {
+  if (selectedGene) loadGeneStructure(selectedGene);
+}
+
+function renderGeneSVG(structure) {
+  var container = document.getElementById("gene-structure-svg");
+  var vl = structure.view_length;
+
+  var margin = {top: 8, right: 40, left: 50, bottom: 48};
+  var totalW = 960;
+  var drawW = totalW - margin.left - margin.right;
+  var trackY = margin.top;
+  var trackH = 26;
+
+  function tx(pos) { return margin.left + (pos / vl) * drawW; }
+
+  var svgH = 148;
+  var svgId = 'gene-svg-' + Date.now();
+  var svg = '<svg id="' + svgId + '" viewBox="0 0 ' + totalW + ' ' + svgH + '" xmlns="http://www.w3.org/2000/svg" style="width:100%;">';
+
+  // Content group with pan/zoom transform
+  svg += '<g id="gene-content-group" transform="translate(' + svgPanX + ', 0) scale(' + svgZoom + ')">';
+
+  // Clickable background for clearing
+  svg += '<rect x="' + margin.left + '" y="' + trackY + '" width="' + drawW + '" height="' + trackH + '" fill="transparent" onclick="resetSelection()" style="cursor:pointer;" />';
+
+  // 5' / 3' labels
+  svg += '<text x="' + (margin.left - 6) + '" y="' + (trackY + trackH/2 + 4) + '" text-anchor="end" font-size="11" font-weight="600" fill="#555">5\'</text>';
+  svg += '<text x="' + (margin.left + drawW + 6) + '" y="' + (trackY + trackH/2 + 4) + '" text-anchor="start" font-size="11" font-weight="600" fill="#555">3\'</text>';
+  if (structure.strand === "-") {
+    svg += '<text x="' + (margin.left - 6) + '" y="' + (trackY + trackH + 14) + '" text-anchor="end" font-size="10" fill="#888">(-)</text>';
+  }
+
+  // Gene boundary markers (dashed vertical lines)
+  var gbY1 = trackY - 4;
+  var gbY2 = trackY + trackH + 4;
+  svg += '<line x1="' + tx(structure.gene_view_start) + '" y1="' + gbY1 + '" x2="' + tx(structure.gene_view_start) + '" y2="' + gbY2 + '" class="gene-boundary" />';
+  svg += '<line x1="' + tx(structure.gene_view_end) + '" y1="' + gbY1 + '" x2="' + tx(structure.gene_view_end) + '" y2="' + gbY2 + '" class="gene-boundary" />';
+
+  // Draw promoter blocks
+  (structure.promoter_blocks || []).forEach(function(b) {
+    var x = tx(b.view_start);
+    var w = Math.max(tx(b.view_end) - tx(b.view_start), 2);
+    svg += '<rect x="' + x + '" y="' + trackY + '" width="' + w + '" height="' + trackH + '" rx="2" class="promoter-block' + selClass(b, "promoter") + '" data-rtype="promoter" data-ri="' + b.index + '" data-vs="' + b.view_start + '" data-ve="' + b.view_end + '" data-label="' + b.label + '" onclick="onRegionClick(\'promoter\',' + b.index + ',' + b.view_start + ',' + b.view_end + ',\'' + b.label + '\',event)" />';
+    if (w > 32) {
+      svg += '<text x="' + (x + w/2) + '" y="' + (trackY + trackH/2 + 4) + '" class="block-label" text-anchor="middle" fill="#2e7d32">' + b.label + '</text>';
+    }
+    svg += addSelectionOverlay(b, "promoter", x, w, trackY, trackH);
+  });
+
+  // Draw UTR5 regions
+  (structure.utr5_regions || []).forEach(function(r, utrIdx) {
+    var x = tx(r.view_start);
+    var w = Math.max(tx(r.view_end) - tx(r.view_start), 4);
+    r._idx = utrIdx;  // for selClass/addSelectionOverlay matching
+    svg += '<rect x="' + x + '" y="' + trackY + '" width="' + w + '" height="' + trackH + '" rx="2" class="utr5-block' + selClass(r, "utr5") + '" data-rtype="utr5" data-ri="' + utrIdx + '" data-vs="' + r.view_start + '" data-ve="' + r.view_end + '" data-label="5\'UTR-' + (utrIdx + 1) + '" onclick="onRegionClick(\'utr5\',' + utrIdx + ',' + r.view_start + ',' + r.view_end + ',\'5\\\'UTR-' + (utrIdx + 1) + '\',event)" />';
+    if (w > 28) {
+      svg += '<text x="' + (x + w/2) + '" y="' + (trackY + trackH/2 + 4) + '" text-anchor="middle" font-size="8" fill="#555">5\'UTR</text>';
+    }
+    svg += addSelectionOverlay(r, "utr5", x, w, trackY, trackH);
+  });
+
+  // Draw exons
+  (structure.exons || []).forEach(function(e) {
+    var x = tx(e.view_start);
+    var w = Math.max(tx(e.view_end) - tx(e.view_start), 2);
+    svg += '<rect x="' + x + '" y="' + trackY + '" width="' + w + '" height="' + trackH + '" rx="2" class="exon-block' + selClass(e, "exon") + '" data-rtype="exon" data-ri="' + e.index + '" data-vs="' + e.view_start + '" data-ve="' + e.view_end + '" data-label="Exon' + e.index + '" onclick="onRegionClick(\'exon\',' + e.index + ',' + e.view_start + ',' + e.view_end + ',\'Exon' + e.index + '\',event)" />';
+    if (w > 28) {
+      svg += '<text x="' + (x + w/2) + '" y="' + (trackY + trackH/2 + 4) + '" class="block-label" text-anchor="middle" fill="#fff">E' + e.index + '</text>';
+    }
+    svg += addSelectionOverlay(e, "exon", x, w, trackY, trackH);
+  });
+
+  // Draw introns (thin, between exons)
+  (structure.introns || []).forEach(function(iv) {
+    var x = tx(iv.view_start);
+    var w = Math.max(tx(iv.view_end) - tx(iv.view_start), 2);
+    var iy = trackY + trackH/2 - 5;
+    var ih = 10;
+    svg += '<rect x="' + x + '" y="' + iy + '" width="' + w + '" height="' + ih + '" rx="1" class="intron-block' + selClass(iv, "intron") + '" data-rtype="intron" data-ri="' + iv.index + '" data-vs="' + iv.view_start + '" data-ve="' + iv.view_end + '" data-label="Intron' + iv.index + '" onclick="onRegionClick(\'intron\',' + iv.index + ',' + iv.view_start + ',' + iv.view_end + ',\'Intron' + iv.index + '\',event)" />';
+    svg += addSelectionOverlay(iv, "intron", x, w, iy, ih);
+  });
+
+  // Draw UTR3 regions
+  (structure.utr3_regions || []).forEach(function(r, utrIdx) {
+    var x = tx(r.view_start);
+    var w = Math.max(tx(r.view_end) - tx(r.view_start), 4);
+    r._idx = utrIdx;  // for selClass/addSelectionOverlay matching
+    svg += '<rect x="' + x + '" y="' + trackY + '" width="' + w + '" height="' + trackH + '" rx="2" class="utr3-block' + selClass(r, "utr3") + '" data-rtype="utr3" data-ri="' + utrIdx + '" data-vs="' + r.view_start + '" data-ve="' + r.view_end + '" data-label="3\'UTR-' + (utrIdx + 1) + '" onclick="onRegionClick(\'utr3\',' + utrIdx + ',' + r.view_start + ',' + r.view_end + ',\'3\\\'UTR-' + (utrIdx + 1) + '\',event)" />';
+    if (w > 28) {
+      svg += '<text x="' + (x + w/2) + '" y="' + (trackY + trackH/2 + 4) + '" text-anchor="middle" font-size="8" fill="#555">3\'UTR</text>';
+    }
+    svg += addSelectionOverlay(r, "utr3", x, w, trackY, trackH);
+  });
+
+  // Draw downstream blocks
+  (structure.downstream_blocks || []).forEach(function(b) {
+    var x = tx(b.view_start);
+    var w = Math.max(tx(b.view_end) - tx(b.view_start), 2);
+    svg += '<rect x="' + x + '" y="' + trackY + '" width="' + w + '" height="' + trackH + '" rx="2" class="downstream-block' + selClass(b, "downstream") + '" data-rtype="downstream" data-ri="' + b.index + '" data-vs="' + b.view_start + '" data-ve="' + b.view_end + '" data-label="' + b.label + '" onclick="onRegionClick(\'downstream\',' + b.index + ',' + b.view_start + ',' + b.view_end + ',\'' + b.label + '\',event)" />';
+    if (w > 32) {
+      svg += '<text x="' + (x + w/2) + '" y="' + (trackY + trackH/2 + 4) + '" class="block-label" text-anchor="middle" fill="#6a1b9a">' + b.label + '</text>';
+    }
+    svg += addSelectionOverlay(b, "downstream", x, w, trackY, trackH);
+  });
+
+  // Selection forward/backward arrows between selections
+  if (primerSelection.forward && primerSelection.reverse) {
+    var fwMid = tx((primerSelection.forward.view_start + primerSelection.forward.view_end) / 2);
+    var rvMid = tx((primerSelection.reverse.view_start + primerSelection.reverse.view_end) / 2);
+    var arrowY = trackY + trackH + 14;
+    svg += '<line x1="' + fwMid + '" y1="' + arrowY + '" x2="' + rvMid + '" y2="' + arrowY + '" stroke="#666" stroke-width="1" stroke-dasharray="4,2" />';
+    svg += '<text x="' + ((fwMid + rvMid) / 2) + '" y="' + (arrowY - 3) + '" text-anchor="middle" font-size="9" fill="#666">product ~' + estimateProduct() + ' bp</text>';
+  }
+
+  // Scale bar
+  var scaleY = trackY + trackH + 24;
+  svg += '<line x1="' + margin.left + '" y1="' + scaleY + '" x2="' + (margin.left + drawW) + '" y2="' + scaleY + '" class="scale-line" />';
+
+  var intervals = [100, 200, 500, 1000, 2000, 5000, 10000];
+  var tick = intervals.find(function(iv) { return vl / iv <= 12; }) || 5000;
+  if (vl / tick < 2) tick = intervals.find(function(iv) { return vl / iv >= 2 && vl / iv <= 12; }) || tick;
+
+  for (var pos = 0; pos <= vl; pos += tick) {
+    var sx = tx(pos);
+    svg += '<line x1="' + sx + '" y1="' + scaleY + '" x2="' + sx + '" y2="' + (scaleY + 5) + '" class="scale-tick" />';
+    svg += '<text x="' + sx + '" y="' + (scaleY + 16) + '" text-anchor="middle" font-size="9" fill="#888">' + pos + '</text>';
+  }
+  if (vl % tick !== 0) {
+    var ex = tx(vl);
+    svg += '<line x1="' + ex + '" y1="' + scaleY + '" x2="' + ex + '" y2="' + (scaleY + 5) + '" class="scale-tick" />';
+    svg += '<text x="' + ex + '" y="' + (scaleY + 16) + '" text-anchor="middle" font-size="9" fill="#888">' + vl + '</text>';
+  }
+
+  // Legend
+  var ly = Math.max(scaleY + 22, 126);
+  svg += '<g transform="translate(' + margin.left + ', ' + ly + ')">';
+  svg += '<rect x="0" y="0" width="10" height="8" rx="1" fill="#2b5f8a" opacity="0.9" /><text x="13" y="8" class="legend" fill="#555">Exon</text>';
+  svg += '<rect x="42" y="0" width="10" height="8" rx="1" fill="#bdbdbd" /><text x="55" y="8" class="legend" fill="#555">5\'UTR</text>';
+  svg += '<rect x="88" y="0" width="10" height="8" rx="1" fill="#d5d5d5" /><text x="101" y="8" class="legend" fill="#555">3\'UTR</text>';
+  svg += '<rect x="135" y="0" width="10" height="8" rx="1" fill="#c8e6c9" stroke="#81c784" stroke-width="0.5" /><text x="148" y="8" class="legend" fill="#555">Promoter</text>';
+  svg += '<rect x="202" y="0" width="10" height="8" rx="1" fill="#e1bee7" stroke="#ce93d8" stroke-width="0.5" /><text x="215" y="8" class="legend" fill="#555">Downstream</text>';
+  svg += '<rect x="290" y="0" width="10" height="8" rx="1" fill="#e8e8e8" stroke="#bbb" stroke-width="0.5" /><text x="303" y="8" class="legend" fill="#555">Intron</text>';
+  svg += '<line x1="345" y1="4" x2="355" y2="4" stroke="#555" stroke-width="1" stroke-dasharray="4,3" /><text x="359" y="8" class="legend" fill="#555">Gene</text>';
+  svg += '<text x="405" y="8" class="legend" fill="#888">' + structure.seqid + ':' + structure.view_start + '-' + structure.view_end + ' (' + structure.strand + ')</text>';
+  svg += '</g>';  // end legend group
+
+  svg += '</g>';  // end gene-content-group (pan/zoom)
+
+  svg += '</svg>';
+  container.innerHTML = svg;
+
+  // Attach pan/zoom event listeners to the SVG element
+  setTimeout(function() {
+    setupSvgPanZoom(svgId);
+  }, 10);
+}
+
+// === Pan & Zoom Setup ===
+function setupSvgPanZoom(svgId) {
+  var svg = document.getElementById(svgId);
+  if (!svg || svg._panZoomSetup) return;
+  svg._panZoomSetup = true;
+
+  // Wheel → zoom
+  svg.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    var pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    var ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    var svgPt = pt.matrixTransform(ctm.inverse());
+    var cx = svgPt.x;
+
+    var delta = -e.deltaY / 300;
+    var newZoom = svgZoom * (1 + delta);
+    newZoom = Math.max(0.3, Math.min(10, newZoom));
+    zoomAtPoint(newZoom, cx);
+  }, { passive: false });
+
+  // Mousedown → start pan (only on background, not on clickable elements)
+  svg.addEventListener('mousedown', function(e) {
+    // Only pan on background rect or directly on SVG/g elements
+    var tag = e.target.tagName;
+    var isBg = (tag === 'rect' && e.target.getAttribute('fill') === 'transparent');
+    var isSvgContainer = (tag === 'svg' || tag === 'g');
+    if (!isBg && !isSvgContainer) return;
+
+    svgDragging = true;
+    svgDragStart = e.clientX;
+    svgPanStart = svgPanX;
+    svg.classList.add('dragging');
+    e.preventDefault();
+  });
+
+  // Mousemove → pan (only set up once on window)
+  if (!svgWindowListenersSetup) {
+    svgWindowListenersSetup = true;
+    window.addEventListener('mousemove', function(e) {
+      if (!svgDragging) return;
+      var dx = e.clientX - svgDragStart;
+      svgPanX = svgPanStart + dx / svgZoom;
+      applyPanZoom();
+    });
+
+    window.addEventListener('mouseup', function() {
+      if (svgDragging) {
+        svgDragging = false;
+        var svgEl = document.querySelector('#gene-structure-svg svg');
+        if (svgEl) svgEl.classList.remove('dragging');
+      }
+    });
+  }
+}
+
+function zoomAtPoint(newZoom, cx) {
+  var scale = newZoom / svgZoom;
+  svgPanX = cx - (cx - svgPanX) * scale;
+  svgZoom = newZoom;
+  applyPanZoom();
+}
+
+function applyPanZoom() {
+  var g = document.getElementById('gene-content-group');
+  if (g && g.setAttribute) {
+    g.setAttribute('transform', 'translate(' + svgPanX + ', 0) scale(' + svgZoom + ')');
+  }
+  updateZoomLabel();
+}
+
+function updateZoomLabel() {
+  var lbl = document.getElementById('zoom-level');
+  if (lbl) lbl.textContent = Math.round(svgZoom * 100) + '%';
+}
+
+function zoomGene(step) {
+  var newZoom = svgZoom + step;
+  newZoom = Math.max(0.3, Math.min(10, newZoom));
+  // Zoom toward center of visible SVG
+  var svg = document.querySelector('#gene-structure-svg svg');
+  if (svg) {
+    var rect = svg.getBoundingClientRect();
+    var midX = rect.width / 2;
+    var pt = svg.createSVGPoint();
+    pt.x = midX;
+    pt.y = 0;
+    var ctm = svg.getScreenCTM();
+    if (ctm) {
+      var svgPt = pt.matrixTransform(ctm.inverse());
+      zoomAtPoint(newZoom, svgPt.x);
+    } else {
+      svgZoom = newZoom;
+      applyPanZoom();
+    }
+  } else {
+    svgZoom = newZoom;
+    applyPanZoom();
+  }
+}
+
+function resetGeneView() {
+  svgPanX = 0;
+  svgZoom = 1;
+  applyPanZoom();
+}
+
+// Helper: CSS class for selected regions (range-based matching)
+function selClass(region, rtype) {
+  if (!primerSelection.forward && !primerSelection.reverse) return '';
+  var cls = '';
+  var rvs = region.view_start;
+  var rve = region.view_end;
+  if (primerSelection.forward && overlapRange(rvs, rve, primerSelection.forward.view_start, primerSelection.forward.view_end)) {
+    cls += (rvs === primerSelection.forward.view_start || rve === primerSelection.forward.view_end) ? ' selected-forward' : ' in-fwd-range';
+  }
+  if (primerSelection.reverse && overlapRange(rvs, rve, primerSelection.reverse.view_start, primerSelection.reverse.view_end)) {
+    cls += (rvs === primerSelection.reverse.view_start || rve === primerSelection.reverse.view_end) ? ' selected-reverse' : ' in-rev-range';
+  }
+  return cls ? ' ' + cls.trim() : '';
+}
+
+function overlapRange(a1, a2, b1, b2) {
+  return a1 <= b2 && a2 >= b1;
+}
+
+// Helper: returns semi-transparent overlay for all blocks within selected ranges
+function addSelectionOverlay(region, rtype, x, w, y, h) {
+  if (!primerSelection.forward && !primerSelection.reverse) return '';
+  var rvs = region.view_start;
+  var rve = region.view_end;
+  var result = '';
+  if (primerSelection.forward && overlapRange(rvs, rve, primerSelection.forward.view_start, primerSelection.forward.view_end)) {
+    result += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="2" class="forward-overlay" />';
+  }
+  if (primerSelection.reverse && overlapRange(rvs, rve, primerSelection.reverse.view_start, primerSelection.reverse.view_end)) {
+    result += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="2" class="reverse-overlay" />';
+  }
+  return result;
+}
+
+// Helper: estimate product size from selection
+function estimateProduct() {
+  if (!primerSelection.forward || !primerSelection.reverse) return '?';
+  var fwdMid = (primerSelection.forward.view_start + primerSelection.forward.view_end) / 2;
+  var revMid = (primerSelection.reverse.view_start + primerSelection.reverse.view_end) / 2;
+  return Math.abs(Math.round(revMid - fwdMid));
+}
+
+// === Region Click Handler (two-phase selection, shift+click to extend range) ===
+function onRegionClick(rtype, index, vs, ve, label, event) {
+  if (event) event.stopPropagation();
+  var shift = event && event.shiftKey;
+
+  if (primerSelection.forward === null) {
+    // Phase 1: set forward range
+    primerSelection.forward = {view_start: vs, view_end: ve, label: label};
+    primerSelection.reverse = null;
+  } else if (shift) {
+    // Shift+click: extend the current range being built
+    var target = primerSelection.reverse === null ? primerSelection.forward : primerSelection.reverse;
+    if (vs < target.view_start) target.view_start = vs;
+    if (ve > target.view_end) target.view_end = ve;
+    target.label = formatRangeLabel(target.view_start, target.view_end);
+  } else if (primerSelection.reverse === null) {
+    // Phase 2: set reverse range (click same region = deselect forward)
+    if (vs === primerSelection.forward.view_start && ve === primerSelection.forward.view_end && rtype === (primerSelection.forward._type || '')) {
+      primerSelection.forward = null;
+    } else {
+      primerSelection.reverse = {view_start: vs, view_end: ve, label: label};
+      // Ensure forward is always left of reverse
+      if (primerSelection.forward.view_start > primerSelection.reverse.view_start) {
+        var tmp = primerSelection.forward;
+        primerSelection.forward = primerSelection.reverse;
+        primerSelection.reverse = tmp;
+      }
+    }
+  } else {
+    // Both set — restart with new forward
+    primerSelection.forward = {view_start: vs, view_end: ve, label: label};
+    primerSelection.reverse = null;
+  }
+
+  updateSelectionUI();
+  if (geneStructureData) renderGeneSVG(geneStructureData);
+}
+
+// Build a human-readable label for a coordinate range
+function formatRangeLabel(vs, ve) {
+  if (!geneStructureData) return vs + '-' + ve;
+  var parts = [];
+  // Check all block types for matching coordinates
+  var allBlocks = [];
+  (geneStructureData.promoter_blocks || []).forEach(function(b) { allBlocks.push({label: b.label, vs: b.view_start, ve: b.view_end}); });
+  (geneStructureData.exons || []).forEach(function(e) { allBlocks.push({label: 'Exon' + e.index, vs: e.view_start, ve: e.view_end}); });
+  (geneStructureData.introns || []).forEach(function(iv) { allBlocks.push({label: 'Intron' + iv.index, vs: iv.view_start, ve: iv.view_end}); });
+  (geneStructureData.utr5_regions || []).forEach(function(r, i) { allBlocks.push({label: 'UTR5-' + (i+1), vs: r.view_start, ve: r.view_end}); });
+  (geneStructureData.utr3_regions || []).forEach(function(r, i) { allBlocks.push({label: 'UTR3-' + (i+1), vs: r.view_start, ve: r.view_end}); });
+  (geneStructureData.downstream_blocks || []).forEach(function(b) { allBlocks.push({label: b.label, vs: b.view_start, ve: b.view_end}); });
+  allBlocks.sort(function(a, b) { return a.vs - b.vs; });
+
+  var first = null, last = null;
+  allBlocks.forEach(function(b) {
+    if (b.vs >= vs && b.ve <= ve) {
+      if (!first) first = b;
+      last = b;
+    }
+  });
+  if (first && last && first !== last) {
+    return first.label + '–' + last.label;
+  } else if (first) {
+    return first.label;
+  }
+  return vs + '-' + ve;
+}
+
+// === Reset Selection ===
+function resetSelection() {
+  primerSelection.forward = null;
+  primerSelection.reverse = null;
+  updateSelectionUI();
+  if (geneStructureData) renderGeneSVG(geneStructureData);
+}
+
+// === Update Selection Status UI ===
+function updateSelectionUI() {
+  var statusBar = document.getElementById("selection-status");
+  var fwdText = document.getElementById("sel-fwd-text");
+  var revText = document.getElementById("sel-rev-text");
+  var prodText = document.getElementById("sel-prod-text");
+  var targetSelect = document.getElementById("target-select");
+
+  if (primerSelection.forward) {
+    statusBar.classList.add("active");
+    fwdText.innerHTML = '<span class="fwd-badge">Fwd</span> ' + primerSelection.forward.label + ' (' + primerSelection.forward.view_start + '-' + primerSelection.forward.view_end + ')';
+  } else {
+    statusBar.classList.remove("active");
+    fwdText.innerHTML = '';
+  }
+
+  if (primerSelection.reverse) {
+    revText.innerHTML = '<span class="rev-badge">Rev</span> ' + primerSelection.reverse.label + ' (' + primerSelection.reverse.view_start + '-' + primerSelection.reverse.view_end + ')';
+    prodText.textContent = 'Product: ~' + estimateProduct() + ' bp';
+  } else {
+    revText.innerHTML = primerSelection.forward ? '<span style="color:#888;">Click a region for reverse primer...</span>' : '';
+    prodText.textContent = '';
+  }
+
+  // Manage "visual" target option
+  if (primerSelection.forward && primerSelection.reverse) {
+    if (!Array.from(targetSelect.options).some(function(o) { return o.value === "visual"; })) {
+      var opt = document.createElement("option");
+      opt.value = "visual";
+      opt.textContent = "Visual selection";
+      targetSelect.appendChild(opt);
+    }
+    targetSelect.value = "visual";
+  } else if (primerSelection.forward) {
+    if (!Array.from(targetSelect.options).some(function(o) { return o.value === "visual"; })) {
+      var opt2 = document.createElement("option");
+      opt2.value = "visual";
+      opt2.textContent = "Visual selection";
+      targetSelect.appendChild(opt2);
+    }
+    targetSelect.value = "visual";
+  } else {
+    if (targetSelect.value === "visual") {
+      targetSelect.value = "gene";
+    }
+    // Remove dynamic visual option
+    var visualOpt = Array.from(targetSelect.options).find(function(o) { return o.value === "visual"; });
+    if (visualOpt) visualOpt.remove();
+  }
+}
+
+// Close dropdown on outside click
+document.addEventListener("click", function(e) {
+  if (!e.target.closest(".autocomplete-wrap")) {
+    document.getElementById("gene-dropdown").classList.remove("active");
+  }
+});
+
+// === Validation ===
+function validateForm() {
+  if (currentMode === "gene") {
+    const gene = document.getElementById("gene-input").value.trim();
+    if (!gene) return "Please enter a gene ID.";
+  } else if (currentMode === "region") {
+    const region = document.getElementById("region-input").value.trim();
+    if (!region) return "Please enter a genomic region.";
+    const parts = region.split(":");
+    if (parts.length < 2 || !parts[1].includes("-")) return "Invalid region format. Expected: chr:start-end";
+  } else if (currentMode === "sequence") {
+    const seq = document.getElementById("sequence-input").value.trim();
+    if (!seq) return "Please enter a template sequence or FASTA file path.";
+    // Check if it looks like a file path
+    if (seq.length < 250 && seq.indexOf(">") === -1 && seq.match(/^[A-Za-z]:[/\\]/)) {
+      // Looks like a file path, skip DNA validation
+    } else if (seq.length < 50 && !seq.match(/^[ACGTNacgtn\s>]+$/)) {
+      return "Sequence must be at least 50 bp of valid DNA (A,C,G,T,N).";
+    }
+  }
+
+  const pMinTm = parseFloat(document.getElementById("primer-min-tm").value);
+  const pMaxTm = parseFloat(document.getElementById("primer-max-tm").value);
+  if (pMinTm > pMaxTm) return "Primer Min Tm must be <= Max Tm.";
+
+  const pMinSz = parseInt(document.getElementById("primer-min-size").value);
+  const pMaxSz = parseInt(document.getElementById("primer-max-size").value);
+  if (pMinSz > pMaxSz) return "Primer Min Size must be <= Max Size.";
+
+  if (document.getElementById("target-select").value === "custom") {
+    const cs = parseInt(document.getElementById("custom-target-start").value);
+    const ce = parseInt(document.getElementById("custom-target-end").value);
+    if (isNaN(cs) || isNaN(ce)) return "Custom target requires both start and end values.";
+    if (cs >= ce) return "Target start must be less than end.";
+  }
+
+  if (document.getElementById("target-select").value === "visual") {
+    if (!primerSelection.forward || !primerSelection.reverse) {
+      return "Please select both forward and reverse primer regions on the gene structure.";
+    }
+  }
+
+  var prodMin = parseInt(document.getElementById("product-min").value);
+  var prodMax = parseInt(document.getElementById("product-max").value);
+  if (prodMin > prodMax) return "Product Size Min must be <= Max.";
+
+  return null;
+}
+
+// === Build Form Data ===
+function buildFormData() {
+  var data = {
+    input_mode: currentMode,
+    target: document.getElementById("target-select").value,
+    primer_opt_size: parseInt(document.getElementById("primer-opt-size").value),
+    primer_min_size: parseInt(document.getElementById("primer-min-size").value),
+    primer_max_size: parseInt(document.getElementById("primer-max-size").value),
+    primer_opt_tm: parseFloat(document.getElementById("primer-opt-tm").value),
+    primer_min_tm: parseFloat(document.getElementById("primer-min-tm").value),
+    primer_max_tm: parseFloat(document.getElementById("primer-max-tm").value),
+    primer_gc_min: parseFloat(document.getElementById("primer-gc-min").value),
+    primer_gc_max: parseFloat(document.getElementById("primer-gc-max").value),
+    num_return: parseInt(document.getElementById("num-return").value),
+    skip_specificity: !document.getElementById("skip-specificity").checked,
+    max_off_target_mismatch: parseInt(document.getElementById("max-off-target-mismatch").value),
+    min_3prime_match: parseInt(document.getElementById("min-3prime-match").value),
+    max_amplicon_size: parseInt(document.getElementById("max-amplicon-size").value),
+    product_size_min: parseInt(document.getElementById("product-min").value),
+    product_size_max: parseInt(document.getElementById("product-max").value),
+  };
+
+  if (data.target === "custom") {
+    data.target = [
+      parseInt(document.getElementById("custom-target-start").value),
+      parseInt(document.getElementById("custom-target-end").value),
+    ].join(",");
+  }
+
+  if (data.target === "visual") {
+    if (primerSelection.forward && primerSelection.reverse) {
+      data.forward_region = [primerSelection.forward.view_start, primerSelection.forward.view_end];
+      data.reverse_region = [primerSelection.reverse.view_start, primerSelection.reverse.view_end];
+    }
+    data.upstream_bp = (parseInt(document.getElementById("upstream-kb").value) || 1) * 1000;
+    data.downstream_bp = (parseInt(document.getElementById("downstream-kb").value) || 4) * 1000;
+  }
+
+  if (currentMode === "gene") {
+    data.gene = document.getElementById("gene-input").value.trim();
+  } else if (currentMode === "region") {
+    data.region = document.getElementById("region-input").value.trim();
+  } else {
+    data.sequence = document.getElementById("sequence-input").value.trim();
+  }
+
+  return data;
+}
+
+// === Loading Messages ===
+const LOADING_MESSAGES = [
+  "Designing primers with Primer3...",
+  "Running genome-wide BLAST...",
+  "Checking 3'-end specificity...",
+  "Detecting off-target amplicons...",
+  "Formatting results...",
+];
+
+function showLoading() {
+  const overlay = document.getElementById("loading-overlay");
+  overlay.classList.add("active");
+  cycleLoadingText(0);
+}
+
+function hideLoading() {
+  document.getElementById("loading-overlay").classList.remove("active");
+}
+
+function cycleLoadingText(idx) {
+  if (!document.getElementById("loading-overlay").classList.contains("active")) return;
+  document.getElementById("loading-text").textContent = LOADING_MESSAGES[idx];
+  setTimeout(() => cycleLoadingText((idx + 1) % LOADING_MESSAGES.length), 3000);
+}
+
+// === Error Handling ===
+function showError(title, msg, suggestions) {
+  const box = document.getElementById("error-box");
+  document.getElementById("error-title").textContent = title;
+  document.getElementById("error-msg").textContent = msg;
+  const sugDiv = document.getElementById("error-suggestions");
+  if (suggestions && suggestions.length > 0) {
+    sugDiv.innerHTML = "<strong>Suggestions:</strong> " +
+      suggestions.map(s => `<a onclick="useSuggestion('${s}')">${s}</a>`).join(" ");
+  } else {
+    sugDiv.innerHTML = "";
+  }
+  box.classList.add("active");
+  document.getElementById("results").classList.remove("active");
+}
+
+function hideError() {
+  document.getElementById("error-box").classList.remove("active");
+}
+
+function useSuggestion(gene) {
+  document.getElementById("gene-input").value = gene;
+  hideError();
+  submitForm();
+}
+
+// === Submit ===
+async function submitForm() {
+  hideError();
+  document.getElementById("results").classList.remove("active");
+
+  const error = validateForm();
+  if (error) {
+    showError("Validation Error", error, []);
+    return;
+  }
+
+  const data = buildFormData();
+  showLoading();
+
+  try {
+    const resp = await fetch("/api/design", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const result = await resp.json();
+
+    hideLoading();
+
+    if (!result.success) {
+      showError(
+        result.error || "Design failed",
+        result.suggestion || "",
+        result.suggestions || []
+      );
+      return;
+    }
+
+    renderResults(result);
+    window.scrollTo({ top: document.getElementById("results").offsetTop - 20, behavior: "smooth" });
+  } catch (e) {
+    hideLoading();
+    showError("Connection Error", "Could not reach the server. Is it still running?", []);
+  }
+}
+
+// === Format one alignment line with fixed-width fields for perfect vertical alignment ===
+// Layout: label(16) + coordL(10) + "  " + body + "  " + coordR
+function formatAlignLine(label, coordL, body, coordR, bodyClass) {
+  var lbl = label.padEnd(16);
+  var cl = String(coordL).padStart(10);
+  var cr = String(coordR).padEnd(10);
+  var bc = bodyClass || 'as';
+  return '<span class="al">' + lbl + '</span>' +
+         '<span class="ac">' + cl + '  </span>' +
+         '<span class="' + bc + '">' + body + '</span>' +
+         '<span class="ac">  ' + cr + '</span>';
+}
+
+// === Build full-length match_pattern covering entire primer (NCBI format) ===
+function buildFullMatchPattern(fullPrimer, alignment) {
+  var qseq = (alignment.qseq || '').toUpperCase();
+  var sseq = (alignment.sseq || '').toUpperCase();
+  var qStart = alignment.query_start || 1;
+  var qEnd = alignment.query_end || fullPrimer.length;
+  var pattern = '';
+
+  // Positions before alignment: unaligned, show primer base
+  for (var i = 0; i < qStart - 1; i++) {
+    pattern += fullPrimer[i] || 'N';
+  }
+  // Aligned positions: . for match, primer base for mismatch/gap
+  for (var j = 0; j < qseq.length; j++) {
+    var q = qseq[j];
+    var s = sseq[j];
+    if (q === s && q !== '-' && s !== '-') {
+      pattern += '.';
+    } else {
+      pattern += q;
+    }
+  }
+  // Positions after alignment: unaligned, show primer base
+  for (var k = qEnd; k < fullPrimer.length; k++) {
+    pattern += fullPrimer[k] || 'N';
+  }
+  return pattern;
+}
+
+// === Render Results (NCBI-style) ===
+function renderResults(result) {
+  const resultsDiv = document.getElementById("results");
+  const summaryDiv = document.getElementById("results-summary");
+  const tbody = document.getElementById("results-tbody");
+  const reportsDiv = document.getElementById("detailed-reports");
+
+  const pairs = result.pairs || [];
+  const specificCount = pairs.filter(p => p.specificity && p.specificity.is_specific).length;
+  const offTargetTotal = pairs.reduce((sum, p) => sum + (p.specificity ? p.specificity.off_target_count : 0), 0);
+  const specificityDone = pairs.length > 0 && pairs[0].specificity !== undefined;
+
+  // NCBI-style summary
+  if (specificityDone) {
+    if (specificCount === pairs.length) {
+      summaryDiv.innerHTML = `<strong>Primer pairs are specific to input template</strong> as no other targets were found in selected database: <em>Glycine max</em> Wm82 v4.0 full genome assembly.`;
+    } else {
+      summaryDiv.innerHTML = `<strong>${specificCount} of ${pairs.length} primer pairs are specific</strong> to input template. ${offTargetTotal} off-target amplicons detected in <em>Glycine max</em> Wm82 v4.0 full genome assembly.`;
+    }
+  } else {
+    summaryDiv.innerHTML = `<strong>${pairs.length} primer pairs designed</strong> (specificity check skipped).`;
+  }
+  summaryDiv.innerHTML += ` <span class="elapsed">Completed in ${result.elapsed_seconds}s</span>`;
+  if (result.warnings && result.warnings.length > 0) {
+    summaryDiv.innerHTML += `<br><small>${result.warnings.join("; ")}</small>`;
+  }
+
+  // Main summary table (NCBI-style: rows grouped by pair with F/R sub-rows)
+  tbody.innerHTML = pairs.map((p, i) => {
+    const spec = p.specificity || {};
+    const sc = p.self_complementarity || {};
+    const prodRow = i + 1;
+    const ncols = 11;
+
+    let specificHtml = '';
+    if (spec.is_specific !== undefined) {
+      specificHtml = spec.is_specific
+        ? '<span class="badge badge-pass">PASS</span>'
+        : '<span class="badge badge-fail">FAIL (' + (spec.off_target_count || 0) + ')</span>';
+    } else {
+      specificHtml = '<span style="color:#888;">&mdash;</span>';
+    }
+
+    var scoreHtml = '';
+    if (p.score) {
+      var scTotal = p.score.total;
+      var scColor = scTotal >= 80 ? '#155724' : scTotal >= 60 ? '#856404' : '#721c24';
+      var scBg = scTotal >= 80 ? '#d4edda' : scTotal >= 60 ? '#fff3cd' : '#f8d7da';
+      scoreHtml = '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-weight:700;font-size:13px;background:' + scBg + ';color:' + scColor + ';">' + scTotal + '</span>';
+    } else {
+      scoreHtml = '<span style="color:#888;">&mdash;</span>';
+    }
+
+    return `
+    <tr style="border-top: 2px solid #ddd;">
+      <td rowspan="2" style="vertical-align:middle; font-weight:700; text-align:center;">${p.index}</td>
+      <td class="primer-label">Forward</td>
+      <td class="seq-col"><span class="seq" title="${p.forward_primer}">${p.forward_primer}</span></td>
+      <td><span class="badge strand-plus">Plus</span></td>
+      <td class="num-col">${p.forward_length}</td>
+      <td class="num-col">${p.forward_tm}</td>
+      <td class="num-col">${p.forward_gc_percent}</td>
+      <td class="num-col">${sc.forward_self_any}</td>
+      <td class="num-col">${sc.forward_self_end}</td>
+      <td rowspan="2" style="vertical-align:middle; text-align:center;">${scoreHtml}</td>
+      <td rowspan="2" style="vertical-align:middle; text-align:center; font-weight:600;">${p.product_size} bp</td>
+      <td rowspan="2" style="vertical-align:middle; text-align:center;">${specificHtml}</td>
+    </tr>
+    <tr>
+      <td class="primer-label">Reverse</td>
+      <td class="seq-col"><span class="seq" title="${p.reverse_primer}">${p.reverse_primer}</span></td>
+      <td><span class="badge strand-minus">Minus</span></td>
+      <td class="num-col">${p.reverse_length}</td>
+      <td class="num-col">${p.reverse_tm}</td>
+      <td class="num-col">${p.reverse_gc_percent}</td>
+      <td class="num-col">${sc.reverse_self_any}</td>
+      <td class="num-col">${sc.reverse_self_end}</td>
+    </tr>`;
+  }).join("");
+
+  // NCBI-style Detailed Primer Reports
+  reportsDiv.innerHTML = '<h2>Detailed Primer Reports</h2>' + pairs.map((p, i) => {
+    const spec = p.specificity || {};
+    const sc = p.self_complementarity || {};
+
+    // Build target info for products on intended target
+    let targetHtml = '';
+    if (spec.left_target && spec.right_target) {
+      const lt = spec.left_target;
+      const rt = spec.right_target;
+      const chrom = lt.chromosome || rt.chromosome;
+      targetHtml = `
+        <div class="target-section">
+          <h4>Products on intended targets</h4>
+          <div class="target-info">
+            <span class="chrom">&gt;${chrom}</span>&nbsp; Glycine max Wm82 v4.0
+          </div>
+          <div class="target-info">
+            product length = <strong>${p.product_size}</strong>
+          </div>
+          <div class="align-view">
+            <div class="align-block">${[
+              formatAlignLine('Forward primer', 1, p.forward_primer, p.forward_length, 'as'),
+              formatAlignLine('Template', lt.start, '.'.repeat(p.forward_length), lt.end, 'am'),
+              '',
+              formatAlignLine('Reverse primer', 1, p.reverse_primer, p.reverse_length, 'as'),
+              formatAlignLine('Template', rt.start, '.'.repeat(p.reverse_length), rt.end, 'am'),
+            ].join('\n')}</div>
+          </div>
+        </div>`;
+    }
+
+    // Off-target amplicons — NCBI-style unintended_templates with match_pattern
+    let offtargetHtml = '';
+    if (spec.off_target_amplicons && spec.off_target_amplicons.length > 0) {
+      // Group off-targets by chromosome
+      var chrGroups = {};
+      spec.off_target_amplicons.forEach(function(a) {
+        var chr = a.chromosome;
+        if (!chrGroups[chr]) chrGroups[chr] = [];
+        chrGroups[chr].push(a);
+      });
+
+      var unintendedHtml = '';
+      var chrKeys = Object.keys(chrGroups);
+      chrKeys.forEach(function(chr) {
+        var amplicons = chrGroups[chr];
+        // Collect all primer bindings for this chromosome
+        var bindingsHtml = '';
+        amplicons.forEach(function(a) {
+          var fwdFull = a.forward_primer || a.forward_alignment.qseq;
+          var revFull = a.reverse_primer || a.reverse_alignment.qseq;
+          // Use server-computed template_pattern (template bases at mismatches)
+          var fwdPat = a.forward_template_pattern || buildFullMatchPattern(fwdFull, a.forward_alignment);
+          var revPat = a.reverse_template_pattern || buildFullMatchPattern(revFull, a.reverse_alignment);
+
+          bindingsHtml += `
+            <div class="primer-binding">
+              <div class="align-block">${[
+              formatAlignLine('Forward primer', 1, fwdFull, fwdFull.length, 'as'),
+              formatAlignLine('Template', a.forward_alignment.subject_start, fwdPat, a.forward_alignment.subject_end, 'am'),
+              '',
+              formatAlignLine('Reverse primer', 1, revFull, revFull.length, 'as'),
+              formatAlignLine('Template', a.reverse_alignment.subject_start, revPat, a.reverse_alignment.subject_end, 'am'),
+              '<span class="ap">' + 'product length'.padEnd(16) + ' '.repeat(12) + '= ' + a.product_size + '</span>',
+            ].join('\n')}</div>
+            </div>`;
+        });
+
+        unintendedHtml += `
+          <div class="unintended-template">
+            <div class="unintended-header">
+              &gt;<span class="offtarget-loc">${chr}</span>&nbsp; Glycine max Wm82 v4.0
+            </div>
+            ${bindingsHtml}
+          </div>`;
+      });
+
+      offtargetHtml = `
+        <div class="offtarget-section">
+          <h4>Unintended Templates (${spec.off_target_count} off-target amplicons)</h4>
+          ${unintendedHtml}
+        </div>`;
+    } else if (spec.is_specific) {
+      offtargetHtml = `
+        <div class="offtarget-section">
+          <h4>Off-Target Amplicons</h4>
+          <div style="color:#155724; font-size:13px; padding:6px 0;">No off-target amplicons detected &mdash; primer pair is specific.</div>
+        </div>`;
+    } else if (spec.is_specific === undefined) {
+      offtargetHtml = '';
+    }
+
+    // Score breakdown HTML
+    var scoreBreakdownHtml = '';
+    if (p.score) {
+      var s = p.score;
+      var f = s.forward;
+      var r = s.reverse;
+      var c = s.cross;
+      var scColor2 = s.total >= 80 ? '#155724' : s.total >= 60 ? '#856404' : '#721c24';
+      var scBg2 = s.total >= 80 ? '#d4edda' : s.total >= 60 ? '#fff3cd' : '#f8d7da';
+      scoreBreakdownHtml = `
+        <div style="margin-bottom:14px;padding:10px 14px;background:${scBg2};border-radius:4px;font-size:13px;">
+          <strong style="color:${scColor2};">Quality Score: ${s.total} / 100</strong>
+          <span style="color:#888;font-size:11px;margin-left:8px;">F:${f.total}/80 &nbsp; R:${r.total}/80 &nbsp; Cross:${s.cross_total}/20</span>
+          <table style="width:100%;margin-top:6px;font-size:11px;border-collapse:collapse;">
+            <tr style="color:#555;">
+              <td style="padding:2px 4px;">3' Term</td><td style="padding:2px 4px;text-align:right;">${f.terminal_base}</td><td style="padding:2px 4px;text-align:right;">${r.terminal_base}</td>
+              <td style="padding:2px 4px;width:16px;"></td>
+              <td style="padding:2px 4px;">GC%</td><td style="padding:2px 4px;text-align:right;">${f.gc_content}</td><td style="padding:2px 4px;text-align:right;">${r.gc_content}</td>
+            </tr>
+            <tr style="color:#555;">
+              <td style="padding:2px 4px;">3' 8nt</td><td style="padding:2px 4px;text-align:right;">${f.end_stability}</td><td style="padding:2px 4px;text-align:right;">${r.end_stability}</td>
+              <td></td>
+              <td style="padding:2px 4px;">Distrib</td><td style="padding:2px 4px;text-align:right;">${f.base_distribution}</td><td style="padding:2px 4px;text-align:right;">${r.base_distribution}</td>
+            </tr>
+            <tr style="color:#555;">
+              <td style="padding:2px 4px;">Hairpin</td><td style="padding:2px 4px;text-align:right;">${f.hairpin}</td><td style="padding:2px 4px;text-align:right;">${r.hairpin}</td>
+              <td></td>
+              <td style="padding:2px 4px;">Self-dim</td><td style="padding:2px 4px;text-align:right;">${f.self_dimer}</td><td style="padding:2px 4px;text-align:right;">${r.self_dimer}</td>
+            </tr>
+            <tr style="color:#555;">
+              <td style="padding:2px 4px;">Tm</td><td style="padding:2px 4px;text-align:right;">${f.tm}</td><td style="padding:2px 4px;text-align:right;">${r.tm}</td>
+              <td></td>
+              <td style="padding:2px 4px;">ΔTm</td><td colspan="2" style="padding:2px 4px;text-align:right;">${c.delta_tm}</td>
+              <td style="padding:2px 4px;">Cross-dim</td><td colspan="2" style="padding:2px 4px;text-align:right;">${c.cross_dimer}</td>
+            </tr>
+          </table>
+        </div>`;
+    }
+
+    return `
+    <div class="pair-card">
+      <div class="pair-card-header">Primer pair ${p.index} &mdash; Product: ${p.product_size} bp &mdash; Penalty: ${p.penalty}</div>
+      <div class="pair-card-body">
+        ${scoreBreakdownHtml}
+        <table class="sub-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Sequence (5'&rarr;3')</th>
+              <th>Strand</th>
+              <th>Len</th>
+              <th>Start</th>
+              <th>Stop</th>
+              <th>Tm</th>
+              <th>GC%</th>
+              <th>Self comp</th>
+              <th>Self 3' comp</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="primer-label">Forward primer</td>
+              <td class="seq-col">${p.forward_primer}</td>
+              <td><span class="badge strand-plus">Plus</span></td>
+              <td class="num-col">${p.forward_length}</td>
+              <td class="num-col">${p.forward_position}</td>
+              <td class="num-col">${p.forward_position + p.forward_length - 1}</td>
+              <td class="num-col">${p.forward_tm}</td>
+              <td class="num-col">${p.forward_gc_percent}</td>
+              <td class="num-col">${sc.forward_self_any}</td>
+              <td class="num-col">${sc.forward_self_end}</td>
+            </tr>
+            <tr>
+              <td class="primer-label">Reverse primer</td>
+              <td class="seq-col">${p.reverse_primer}</td>
+              <td><span class="badge strand-minus">Minus</span></td>
+              <td class="num-col">${p.reverse_length}</td>
+              <td class="num-col">${p.reverse_position}</td>
+              <td class="num-col">${p.reverse_position - p.reverse_length + 1}</td>
+              <td class="num-col">${p.reverse_tm}</td>
+              <td class="num-col">${p.reverse_gc_percent}</td>
+              <td class="num-col">${sc.reverse_self_any}</td>
+              <td class="num-col">${sc.reverse_self_end}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="product-size-line">Product length: ${p.product_size} bp &mdash; Tm: ${p.product_tm}&deg;C</div>
+        ${targetHtml}
+        ${offtargetHtml}
+      </div>
+    </div>`;
+  }).join("");
+
+  resultsDiv.classList.add("active");
+}
+
+// toggleDetail no longer needed - replaced by NCBI-style detailed reports
+function toggleDetail(idx) {}
+
+// === Keyboard shortcuts ===
+document.addEventListener("keydown", function(e) {
+  if (e.ctrlKey && e.key === "Enter") {
+    e.preventDefault();
+    submitForm();
+  }
+  if (e.key === "Escape" && primerSelection.forward) {
+    resetSelection();
+  }
+});
+</script>
+
+</body>
+</html>
