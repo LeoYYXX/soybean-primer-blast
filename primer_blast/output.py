@@ -26,7 +26,7 @@ def format_text(
         lines.append(f"          Tm={pair.left_tm:.1f}C  GC={pair.left_gc:.1f}%  Pos={pair.left_position}")
         lines.append(f"Reverse:  {pair.right_primer}  ({len(pair.right_primer)} nt)")
         lines.append(f"          Tm={pair.right_tm:.1f}C  GC={pair.right_gc:.1f}%  Pos={pair.right_position}")
-        lines.append(f"Product:  {pair.product_size} bp  Tm={pair.pair_product_tm:.1f}C  Penalty={pair.penalty:.3f}")
+        lines.append(f"DNA amplicon (genomic):  {pair.product_size} bp  Tm={pair.pair_product_tm:.1f}C  Penalty={pair.penalty:.3f}")
 
         # Self-complementarity
         if any([
@@ -45,10 +45,11 @@ def format_text(
             else:
                 lines.append(f"Specific: FAIL ({sr.off_target_count} off-target amplicons)")
                 for amplicon in sr.off_target_amplicons[:5]:
+                    gene_label = f" gene={amplicon.gene_name}" if amplicon.gene_name else ""
                     lines.append(
                         f"  Off-target: {amplicon.chromosome} "
                         f"({amplicon.left_hit.subject_start}-{amplicon.right_hit.subject_end}) "
-                        f"size={amplicon.product_size}bp"
+                        f"size={amplicon.product_size}bp{gene_label}"
                     )
             if sr.left_target_hit:
                 lines.append(
@@ -113,6 +114,7 @@ def format_json(
                 "off_target_amplicons": [
                     {
                         "chromosome": a.chromosome,
+                        "gene_name": a.gene_name or "",
                         "left_position": a.left_hit.subject_start,
                         "right_position": a.right_hit.subject_end,
                         "product_size": a.product_size,

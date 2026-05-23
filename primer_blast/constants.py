@@ -40,3 +40,13 @@ DEFAULT_MAKEBLASTDB_PATH = "C:/Users/leo/blast/bin/makeblastdb.exe"
 # Default file paths (relative to project root)
 DEFAULT_GENOME_FA = "Gmax_508_v4.0.fa"
 DEFAULT_GFF3 = "Gmax_508_Wm82.a4.v1.gene.gff3"
+DEFAULT_TRANSCRIPT_FA = "Gmax_508_Wm82.a4.v1.transcript_primaryTranscriptOnly.fa"
+DEFAULT_ANNOTATION_TSV = "Soybean_Arabidopsis_Complete_Annotation.tsv"
+
+# Off-target sensitivity presets
+OFF_TARGET_PRESETS = {
+    "strict":   {"max_mismatches": 0, "min_3prime": 8,  "min_coverage": 0.85},
+    "standard": {"max_mismatches": 1, "min_3prime": 7,  "min_coverage": 0.75},
+    "sensitive":{"max_mismatches": 2, "min_3prime": 6,  "min_coverage": 0.60},
+    "relaxed":  {"max_mismatches": 3, "min_3prime": 5,  "min_coverage": 0.50},
+}

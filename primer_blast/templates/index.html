@@ -51,6 +51,26 @@ input[type="text"], input[type="number"], textarea, select {
 input:focus, textarea:focus, select:focus { outline: none; border-color: #2b5f8a; box-shadow: 0 0 0 2px rgba(43,95,138,0.15); }
 textarea { resize: vertical; font-family: "Consolas", "Courier New", monospace; font-size: 13px; }
 
+/* === Input Validation Errors === */
+input.input-error, textarea.input-error, select.input-error {
+  border-color: #dc3545 !important;
+  background: #fff5f5 !important;
+  box-shadow: 0 0 0 2px rgba(220,53,69,0.15) !important;
+}
+input.input-error:focus, textarea.input-error:focus, select.input-error:focus {
+  border-color: #dc3545 !important;
+  box-shadow: 0 0 0 3px rgba(220,53,69,0.2) !important;
+}
+.error-tooltip {
+  display: none; font-size: 12px; color: #dc3545; margin-top: 3px; line-height: 1.4;
+  align-items: flex-start; gap: 4px;
+}
+.error-tooltip.active { display: flex; }
+.error-tooltip .err-icon { flex-shrink: 0; font-weight: 700; font-size: 13px; }
+.error-tooltip .err-suggestion { color: #856404; font-style: italic; }
+.field-group { position: relative; }
+.field-group .error-tooltip { position: absolute; bottom: -19px; left: 0; white-space: nowrap; }
+
 /* === Tabs (Input Mode) === */
 .tabs { display: flex; border-bottom: 2px solid #ddd; margin-bottom: 16px; }
 .tab {
@@ -293,6 +313,37 @@ tr:hover td { background: #f8fafc; }
 .gene-structure .block-label { font-size: 9px; font-weight: 600; fill: #333; pointer-events: none; }
 .gene-structure .legend { font-size: 10px; }
 .gene-structure .legend rect { stroke-width: 0.5; }
+/* === Block Diagram (equal-width region blocks) === */
+.block-diagram {
+  display: flex; flex-wrap: wrap; gap: 3px; margin-top: 10px; padding: 6px;
+  background: #fafafa; border: 1px solid #e0e0e0; border-radius: 6px;
+  user-select: none;
+}
+.bd-block {
+  flex: 1 1 0; min-width: 54px; max-width: 110px;
+  border: 2px solid transparent; border-radius: 5px;
+  cursor: pointer; text-align: center; padding: 5px 3px 4px;
+  transition: border-color 0.12s, box-shadow 0.12s, transform 0.1s;
+  position: relative;
+}
+.bd-block:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
+.bd-block:active { transform: scale(0.97); }
+.bd-block .bd-label { font-size: 11px; font-weight: 700; line-height: 1.2; }
+.bd-block .bd-len  { font-size: 10px; color: #666; margin-top: 1px; }
+/* Block type colors */
+.bd-promoter  { background: #c8e6c9; border-color: #a5d6a7; }
+.bd-utr5      { background: #e0e0e0; border-color: #bdbdbd; }
+.bd-exon      { background: #bbdefb; border-color: #90caf9; }
+.bd-intron    { background: #f5f5f5; border-color: #e0e0e0; }
+.bd-utr3      { background: #e0e0e0; border-color: #bdbdbd; }
+.bd-downstream{ background: #e1bee7; border-color: #ce93d8; }
+/* Selection highlight on blocks */
+.bd-block.bd-selected-forward { border-color: #1565c0; box-shadow: 0 0 0 2px rgba(21,101,192,0.3); background: #e3f2fd; }
+.bd-block.bd-selected-reverse { border-color: #c62828; box-shadow: 0 0 0 2px rgba(198,40,40,0.3); background: #ffebee; }
+.bd-block.bd-in-fwd-range { border-color: #64b5f6; border-style: dashed; }
+.bd-block.bd-in-rev-range { border-color: #ef9a9a; border-style: dashed; }
+/* Block diagram hint */
+.bd-hint { font-size: 11px; color: #888; margin-top: 4px; }
 /* Selection status bar */
 .selection-status {
   margin-top: 8px; padding: 6px 12px; background: #fff; border: 1px solid #ddd;
@@ -332,6 +383,7 @@ tr:hover td { background: #f8fafc; }
         <button class="tab active" data-mode="gene" onclick="switchMode('gene')">Gene</button>
         <button class="tab" data-mode="region" onclick="switchMode('region')">Region</button>
         <button class="tab" data-mode="sequence" onclick="switchMode('sequence')">Sequence</button>
+        <button class="tab" data-mode="check" onclick="switchMode('check')">Check Primers</button>
       </div>
 
       <!-- Gene Input -->
@@ -357,6 +409,8 @@ tr:hover td { background: #f8fafc; }
             <span style="color:#888; font-size:11px;">(1 kb per block)</span>
           </div>
           <div id="gene-structure-svg"></div>
+          <div id="gene-block-diagram" class="block-diagram" style="display:none;"></div>
+          <div class="bd-hint" style="margin-top:2px;"><span style="color:#1565c0;font-weight:600;">Fwd</span> / <span style="color:#c62828;font-weight:600;">Rev</span> — blocks shown at equal width for easy clicking. Lengths are drawn to scale in the gene track above.</div>
           <div class="zoom-toolbar">
             <button onclick="zoomGene(-0.3)" title="Zoom out">−</button>
             <button onclick="zoomGene(-0.1)" title="Zoom out a bit">⁻</button>
@@ -395,6 +449,25 @@ tr:hover td { background: #f8fafc; }
             <div class="hint">Paste DNA sequence (min 50 bp) or enter path to a FASTA file</div>
           </div>
         </div>
+      </div>
+
+      <!-- Check Primers Input -->
+      <div class="input-panel" id="panel-check" style="display:none;">
+        <div class="form-row">
+          <div style="flex:1;">
+            <label for="check-fwd-seq">Forward Primer (5'→3')</label>
+            <input type="text" id="check-fwd-seq" placeholder="e.g. ATGCAGACCCAAGATCCACAAT" style="font-family:monospace; font-size:13px;">
+            <div class="hint">Enter forward primer sequence (12–40 nt, IUPAC codes accepted)</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div style="flex:1;">
+            <label for="check-rev-seq">Reverse Primer (5'→3')</label>
+            <input type="text" id="check-rev-seq" placeholder="e.g. AGAGAGTGCTAGCCTCTACCAA" style="font-family:monospace; font-size:13px;">
+            <div class="hint">Enter reverse primer sequence (12–40 nt, IUPAC codes accepted)</div>
+          </div>
+        </div>
+        <div id="check-results" style="display:none; margin-top:12px;"></div>
       </div>
 
       <hr class="form-separator">
@@ -498,19 +571,28 @@ tr:hover td { background: #f8fafc; }
       <div id="specificity-params">
         <div class="form-row">
           <div>
-            <label for="max-off-target-mismatch">Max Off-target Mismatches</label>
-            <input type="number" id="max-off-target-mismatch" value="2" min="0" max="10">
-            <div class="hint">Total mismatches + gaps allowed in off-target hits</div>
+            <label for="off-target-sensitivity">Sensitivity Preset</label>
+            <select id="off-target-sensitivity" onchange="onSensitivityPreset()">
+              <option value="strict">Strict — 0 mismatches, 8nt 3' end</option>
+              <option value="standard" selected>Standard — 1 mismatch, 7nt 3' end</option>
+              <option value="sensitive">Sensitive — 2 mismatches, 6nt 3' end</option>
+              <option value="relaxed">Relaxed — 3 mismatches, 5nt 3' end</option>
+            </select>
+            <div class="hint">Adjusts detection sensitivity for off-target amplicons</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label for="max-off-target-mismatch">Max Mismatches</label>
+            <input type="number" id="max-off-target-mismatch" value="1" min="0" max="10">
           </div>
           <div>
-            <label for="min-3prime-match">Min 3' End Matches</label>
-            <input type="number" id="min-3prime-match" value="5" min="3" max="20">
-            <div class="hint">Consecutive matching bases required at primer 3' end</div>
+            <label for="min-3prime-match">Min 3' Match (nt)</label>
+            <input type="number" id="min-3prime-match" value="7" min="3" max="20">
           </div>
           <div>
-            <label for="max-amplicon-size">Max Amplicon Size (bp)</label>
+            <label for="max-amplicon-size">Max Amplicon (bp)</label>
             <input type="number" id="max-amplicon-size" value="4000" min="100" max="10000">
-            <div class="hint">Maximum size for off-target amplicon detection</div>
           </div>
         </div>
       </div>
@@ -534,6 +616,12 @@ tr:hover td { background: #f8fafc; }
   <!-- Results -->
   <div class="results" id="results">
     <div class="results-summary" id="results-summary"></div>
+    <div id="gene-annotation-panel" style="display:none;margin-bottom:12px;padding:12px 16px;background:#f0f7ff;border:1px solid #b8d4f0;border-radius:6px;font-size:13px;"></div>
+    <div id="genbank-toolbar" style="text-align:right;margin-bottom:8px;display:none;">
+      <button class="btn btn-primary" style="font-size:12px;padding:6px 14px;" onclick="downloadGenBank()">
+        Download GenBank (.gb)
+      </button>
+    </div>
     <div class="table-wrap">
       <table>
         <thead>
@@ -569,6 +657,8 @@ tr:hover td { background: #f8fafc; }
 <script>
 // === State ===
 let currentMode = "gene";
+let currentGene = "";
+let currentPairs = [];
 let geneDebounce = null;
 let selectedGene = "";
 let geneStructureData = null;
@@ -593,13 +683,36 @@ function switchMode(mode) {
   document.querySelector(`#input-tabs .tab[data-mode="${mode}"]`).classList.add("active");
   document.querySelectorAll(".input-panel").forEach(p => p.style.display = "none");
   document.getElementById(`panel-${mode}`).style.display = "block";
+  clearAllFieldErrors();
   hideError();
+
+  var isCheck = mode === "check";
+  // Target row (inside template card)
+  var targetRow = document.getElementById("target-select").closest(".form-row");
+  if (targetRow) targetRow.style.display = isCheck ? "none" : "";
+  // Primer parameters card
+  var primerCard = document.getElementById("primer-card");
+  if (primerCard) primerCard.style.display = isCheck ? "none" : "";
+  // Specificity card: always visible, but auto-expand in check mode
+  var specCard = document.getElementById("specificity-card");
+  if (specCard && isCheck) {
+    specCard.classList.remove("collapsed");
+    document.getElementById("specificity-body").style.display = "block";
+  }
+  // Submit button: show text appropriate to mode
+  var submitBtn = document.getElementById("submit-btn");
+  if (submitBtn) submitBtn.textContent = isCheck ? "Check Primers" : "Design Primers";
 }
 
 // === Target Change ===
 function onTargetChange() {
   var val = document.getElementById("target-select").value;
   document.getElementById("custom-target-wrap").style.display = val === "custom" ? "flex" : "none";
+  // Clear errors from the previous target mode
+  clearFieldError("custom-target-start");
+  clearFieldError("custom-target-end");
+  clearFieldError("gene-structure");
+  hideError();
   // When user switches away from visual selection, clear it
   if (val !== "visual" && primerSelection.forward) {
     resetSelection();
@@ -610,7 +723,28 @@ function onTargetChange() {
 function onSpecificityToggle() {
   const enabled = document.getElementById("skip-specificity").checked;
   document.getElementById("specificity-params").style.opacity = enabled ? "1" : "0.5";
-  document.querySelectorAll("#specificity-params input").forEach(i => i.disabled = !enabled);
+  document.querySelectorAll("#specificity-params input, #specificity-params select").forEach(i => i.disabled = !enabled);
+  if (!enabled) {
+    clearFieldError("max-off-target-mismatch");
+    clearFieldError("min-3prime-match");
+    clearFieldError("max-amplicon-size");
+    hideError();
+  }
+}
+
+// Sensitivity presets: strict | standard | sensitive | relaxed
+const SENSITIVITY_PRESETS = {
+  strict:    { mismatches: 0, min3prime: 8 },
+  standard:  { mismatches: 1, min3prime: 7 },
+  sensitive: { mismatches: 2, min3prime: 6 },
+  relaxed:   { mismatches: 3, min3prime: 5 },
+};
+
+function onSensitivityPreset() {
+  const preset = document.getElementById("off-target-sensitivity").value;
+  const vals = SENSITIVITY_PRESETS[preset] || SENSITIVITY_PRESETS.standard;
+  document.getElementById("max-off-target-mismatch").value = vals.mismatches;
+  document.getElementById("min-3prime-match").value = vals.min3prime;
 }
 
 // === Gene Autocomplete ===
@@ -852,10 +986,75 @@ function renderGeneSVG(structure) {
   svg += '</svg>';
   container.innerHTML = svg;
 
+  // Render equal-width block diagram for easy region selection
+  renderBlockDiagram(structure);
+
   // Attach pan/zoom event listeners to the SVG element
   setTimeout(function() {
     setupSvgPanZoom(svgId);
   }, 10);
+}
+
+// === Block Diagram (equal-width region blocks for easy clicking) ===
+function renderBlockDiagram(structure) {
+  var bd = document.getElementById("gene-block-diagram");
+  if (!bd) return;
+
+  // Collect all clickable regions in genomic order (5'→3')
+  // ridx = the index value passed to onRegionClick (matches SVG conventions)
+  var blocks = [];
+  (structure.promoter_blocks || []).forEach(function(b) {
+    blocks.push({type:"promoter", ridx:b.index, label:b.label, vs:b.view_start, ve:b.view_end, len:b.view_end - b.view_start + 1});
+  });
+  (structure.utr5_regions || []).forEach(function(r, i) {
+    blocks.push({type:"utr5", ridx:i, label:"5'UTR-" + (i+1), vs:r.view_start, ve:r.view_end, len:r.view_end - r.view_start + 1});
+  });
+  (structure.exons || []).forEach(function(e) {
+    blocks.push({type:"exon", ridx:e.index, label:"E" + e.index, vs:e.view_start, ve:e.view_end, len:e.view_end - e.view_start + 1});
+  });
+  (structure.introns || []).forEach(function(iv) {
+    blocks.push({type:"intron", ridx:iv.index, label:"IN" + iv.index, vs:iv.view_start, ve:iv.view_end, len:iv.view_end - iv.view_start + 1});
+  });
+  (structure.utr3_regions || []).forEach(function(r, i) {
+    blocks.push({type:"utr3", ridx:i, label:"3'UTR-" + (i+1), vs:r.view_start, ve:r.view_end, len:r.view_end - r.view_start + 1});
+  });
+  (structure.downstream_blocks || []).forEach(function(b) {
+    blocks.push({type:"downstream", ridx:b.index, label:b.label, vs:b.view_start, ve:b.view_end, len:b.view_end - b.view_start + 1});
+  });
+
+  // Sort by view_start (5'→3')
+  blocks.sort(function(a, b) { return a.vs - b.vs; });
+
+  var html = '';
+  for (var i = 0; i < blocks.length; i++) {
+    var blk = blocks[i];
+    var typeCls = "bd-" + blk.type;
+    var selCls = "";
+
+    // Determine selection state
+    if (primerSelection.forward && overlapRange(blk.vs, blk.ve, primerSelection.forward.view_start, primerSelection.forward.view_end)) {
+      selCls += (blk.vs === primerSelection.forward.view_start || blk.ve === primerSelection.forward.view_end) ? " bd-selected-forward" : " bd-in-fwd-range";
+    }
+    if (primerSelection.reverse && overlapRange(blk.vs, blk.ve, primerSelection.reverse.view_start, primerSelection.reverse.view_end)) {
+      selCls += (blk.vs === primerSelection.reverse.view_start || blk.ve === primerSelection.reverse.view_end) ? " bd-selected-reverse" : " bd-in-rev-range";
+    }
+
+    var lenStr = blk.len >= 1000 ? (blk.len / 1000).toFixed(1) + " kb" : blk.len + " bp";
+
+    html += '<div class="bd-block ' + typeCls + selCls + '"';
+    html += ' data-rtype="' + blk.type + '" data-ri="' + blk.ridx + '"';
+    html += ' data-vs="' + blk.vs + '" data-ve="' + blk.ve + '"';
+    html += ' data-label="' + blk.label + '"';
+    html += ' onclick="onRegionClick(\'' + blk.type + '\',' + blk.ridx + ',' + blk.vs + ',' + blk.ve + ',\'' + blk.label + '\',event)"';
+    html += ' title="' + blk.label + ': ' + blk.vs + '-' + blk.ve + ' (' + lenStr + ')"';
+    html += '>';
+    html += '<div class="bd-label">' + blk.label + '</div>';
+    html += '<div class="bd-len">' + lenStr + '</div>';
+    html += '</div>';
+  }
+
+  bd.innerHTML = html;
+  bd.style.display = blocks.length > 0 ? "flex" : "none";
 }
 
 // === Pan & Zoom Setup ===
@@ -1036,6 +1235,9 @@ function onRegionClick(rtype, index, vs, ve, label, event) {
         primerSelection.forward = primerSelection.reverse;
         primerSelection.reverse = tmp;
       }
+      // Clear gene-structure error if both regions are now selected
+      clearFieldError("gene-structure");
+      hideError();
     }
   } else {
     // Both set — restart with new forward
@@ -1142,53 +1344,255 @@ document.addEventListener("click", function(e) {
   }
 });
 
-// === Validation ===
+// Auto-clear field errors on input/change
+document.addEventListener("input", function(e) {
+  var id = e.target.id;
+  if (id && _fieldErrors[id]) {
+    clearFieldError(id);
+    hideError();
+  }
+});
+document.addEventListener("change", function(e) {
+  var id = e.target.id;
+  if (id && _fieldErrors[id]) {
+    clearFieldError(id);
+    hideError();
+  }
+});
+
+// === Field Error Management ===
+let _fieldErrors = {};  // { fieldId: { message, suggestion } }
+
+function showFieldError(fieldId, message, suggestion) {
+  const el = document.getElementById(fieldId);
+  if (!el) return;
+  el.classList.add("input-error");
+  _fieldErrors[fieldId] = { message: message, suggestion: suggestion || "" };
+
+  // Show tooltip below the field
+  let tip = el.parentElement.querySelector(".error-tooltip");
+  if (!tip) {
+    tip = document.createElement("div");
+    tip.className = "error-tooltip";
+    el.parentElement.appendChild(tip);
+  }
+  var html = '<span class="err-icon">⚠</span><span class="err-msg">' + message + '</span>';
+  if (suggestion) {
+    html += ' <span class="err-suggestion">' + suggestion + '</span>';
+  }
+  tip.innerHTML = html;
+  tip.classList.add("active");
+}
+
+function clearFieldError(fieldId) {
+  const el = document.getElementById(fieldId);
+  if (!el) return;
+  el.classList.remove("input-error");
+  delete _fieldErrors[fieldId];
+  const tip = el.parentElement.querySelector(".error-tooltip");
+  if (tip) tip.classList.remove("active");
+}
+
+function clearAllFieldErrors() {
+  Object.keys(_fieldErrors).forEach(function(id) { clearFieldError(id); });
+  _fieldErrors = {};
+}
+
+function hasFieldErrors() {
+  return Object.keys(_fieldErrors).length > 0;
+}
+
+// === Validation (returns array of {fieldId, message, suggestion}) ===
 function validateForm() {
+  clearAllFieldErrors();
+  var errors = [];
+
+  // --- Input mode validations ---
   if (currentMode === "gene") {
-    const gene = document.getElementById("gene-input").value.trim();
-    if (!gene) return "Please enter a gene ID.";
+    var gene = document.getElementById("gene-input").value.trim();
+    if (!gene) {
+      errors.push({fieldId: "gene-input", message: "Gene ID is required.", suggestion: "Enter a gene ID, e.g. Glyma.01G000100"});
+    }
   } else if (currentMode === "region") {
-    const region = document.getElementById("region-input").value.trim();
-    if (!region) return "Please enter a genomic region.";
-    const parts = region.split(":");
-    if (parts.length < 2 || !parts[1].includes("-")) return "Invalid region format. Expected: chr:start-end";
+    var region = document.getElementById("region-input").value.trim();
+    if (!region) {
+      errors.push({fieldId: "region-input", message: "Genomic region is required.", suggestion: "Format: Gm01:27344-28430 or Gm01:27344-28430:-"});
+    } else {
+      var parts = region.split(":");
+      if (parts.length < 2 || !parts[1].includes("-")) {
+        errors.push({fieldId: "region-input", message: "Invalid region format.", suggestion: "Expected: chr:start-end, e.g. Gm01:1000-2000"});
+      }
+    }
   } else if (currentMode === "sequence") {
-    const seq = document.getElementById("sequence-input").value.trim();
-    if (!seq) return "Please enter a template sequence or FASTA file path.";
-    // Check if it looks like a file path
-    if (seq.length < 250 && seq.indexOf(">") === -1 && seq.match(/^[A-Za-z]:[/\\]/)) {
+    var seq = document.getElementById("sequence-input").value.trim();
+    if (!seq) {
+      errors.push({fieldId: "sequence-input", message: "Template sequence is required.", suggestion: "Paste DNA sequence (min 50 bp) or enter a FASTA file path"});
+    } else if (seq.length < 250 && seq.indexOf(">") === -1 && seq.match(/^[A-Za-z]:[/\\]/)) {
       // Looks like a file path, skip DNA validation
-    } else if (seq.length < 50 && !seq.match(/^[ACGTNacgtn\s>]+$/)) {
-      return "Sequence must be at least 50 bp of valid DNA (A,C,G,T,N).";
+    } else {
+      var cleanSeq = seq.replace(/\s/g, "").replace(/>.*/g, "").toUpperCase();
+      if (cleanSeq.length < 50) {
+        errors.push({fieldId: "sequence-input", message: "Sequence too short (" + cleanSeq.length + " bp).", suggestion: "Minimum 50 bp required for primer design"});
+      } else if (!/^[ACGTN]+$/.test(cleanSeq)) {
+        errors.push({fieldId: "sequence-input", message: "Sequence contains invalid characters.", suggestion: "Only A, C, G, T, N are allowed (found: " + cleanSeq.replace(/[ACGTN]/g, "").split("").filter(function(v,i,a){return a.indexOf(v)===i;}).join("") + ")"});
+      }
     }
   }
 
-  const pMinTm = parseFloat(document.getElementById("primer-min-tm").value);
-  const pMaxTm = parseFloat(document.getElementById("primer-max-tm").value);
-  if (pMinTm > pMaxTm) return "Primer Min Tm must be <= Max Tm.";
-
-  const pMinSz = parseInt(document.getElementById("primer-min-size").value);
-  const pMaxSz = parseInt(document.getElementById("primer-max-size").value);
-  if (pMinSz > pMaxSz) return "Primer Min Size must be <= Max Size.";
-
-  if (document.getElementById("target-select").value === "custom") {
-    const cs = parseInt(document.getElementById("custom-target-start").value);
-    const ce = parseInt(document.getElementById("custom-target-end").value);
-    if (isNaN(cs) || isNaN(ce)) return "Custom target requires both start and end values.";
-    if (cs >= ce) return "Target start must be less than end.";
+  // --- Target validation ---
+  var targetVal = document.getElementById("target-select").value;
+  if (targetVal === "custom") {
+    var cs = parseInt(document.getElementById("custom-target-start").value);
+    var ce = parseInt(document.getElementById("custom-target-end").value);
+    if (isNaN(cs)) {
+      errors.push({fieldId: "custom-target-start", message: "Target start is required.", suggestion: "Enter a 0-based start position"});
+    }
+    if (isNaN(ce)) {
+      errors.push({fieldId: "custom-target-end", message: "Target end is required.", suggestion: "Enter a 0-based end position"});
+    }
+    if (!isNaN(cs) && !isNaN(ce) && cs >= ce) {
+      errors.push({fieldId: "custom-target-start", message: "Start must be less than end.", suggestion: "Start=" + cs + ", End=" + ce + " — try swapping values"});
+    }
   }
-
-  if (document.getElementById("target-select").value === "visual") {
+  if (targetVal === "visual") {
     if (!primerSelection.forward || !primerSelection.reverse) {
-      return "Please select both forward and reverse primer regions on the gene structure.";
+      errors.push({fieldId: "gene-structure", message: "Select both primer binding regions.", suggestion: "Click two regions on the gene structure: one forward, one reverse"});
     }
   }
 
+  // --- Product size ---
   var prodMin = parseInt(document.getElementById("product-min").value);
   var prodMax = parseInt(document.getElementById("product-max").value);
-  if (prodMin > prodMax) return "Product Size Min must be <= Max.";
+  if (isNaN(prodMin) || prodMin < 20) {
+    errors.push({fieldId: "product-min", message: "Invalid minimum product size.", suggestion: "Enter a value >= 20 bp"});
+  }
+  if (isNaN(prodMax) || prodMax > 50000) {
+    errors.push({fieldId: "product-max", message: "Invalid maximum product size.", suggestion: "Enter a value <= 50000 bp"});
+  }
+  if (!isNaN(prodMin) && !isNaN(prodMax) && prodMin > prodMax) {
+    errors.push({fieldId: "product-min", message: "Min cannot exceed Max (" + prodMin + " > " + prodMax + ").", suggestion: "Set product size min <= max"});
+    errors.push({fieldId: "product-max", message: "Max cannot be less than Min (" + prodMax + " < " + prodMin + ").", suggestion: "Set product size max >= min"});
+  }
 
-  return null;
+  // --- Visual selection vs product size compatibility ---
+  if (targetVal === "visual" && primerSelection.forward && primerSelection.reverse) {
+    var minPossible = primerSelection.reverse.view_start - primerSelection.forward.view_end;
+    var maxPossible = primerSelection.reverse.view_end - primerSelection.forward.view_start;
+    if (!isNaN(prodMax) && minPossible > prodMax) {
+      errors.push({fieldId: "gene-structure", message: "Selected regions too far apart (min " + minPossible + " bp product).", suggestion: "Select closer regions, or increase product_size_max above " + minPossible + " bp"});
+    }
+    if (!isNaN(prodMin) && maxPossible < prodMin) {
+      errors.push({fieldId: "gene-structure", message: "Selected regions too close (max " + maxPossible + " bp product).", suggestion: "Select regions farther apart, or reduce product_size_min below " + maxPossible + " bp"});
+    }
+  }
+
+  // --- Primer size ---
+  var pMinSz = parseInt(document.getElementById("primer-min-size").value);
+  var pMaxSz = parseInt(document.getElementById("primer-max-size").value);
+  var pOptSz = parseInt(document.getElementById("primer-opt-size").value);
+
+  if (isNaN(pMinSz) || pMinSz < 12) {
+    errors.push({fieldId: "primer-min-size", message: "Invalid minimum primer size.", suggestion: "Enter a value >= 12 nt"});
+  }
+  if (isNaN(pMaxSz) || pMaxSz > 40) {
+    errors.push({fieldId: "primer-max-size", message: "Invalid maximum primer size.", suggestion: "Enter a value <= 40 nt"});
+  }
+  if (!isNaN(pMinSz) && !isNaN(pMaxSz) && pMinSz > pMaxSz) {
+    errors.push({fieldId: "primer-min-size", message: "Min cannot exceed Max (" + pMinSz + " > " + pMaxSz + ").", suggestion: "Set primer min size <= max size"});
+  }
+  if (!isNaN(pOptSz) && !isNaN(pMinSz) && !isNaN(pMaxSz)) {
+    if (pOptSz < pMinSz) {
+      errors.push({fieldId: "primer-opt-size", message: "Opt size (" + pOptSz + ") is below min (" + pMinSz + ").", suggestion: "Set opt size between min=" + pMinSz + " and max=" + pMaxSz});
+    } else if (pOptSz > pMaxSz) {
+      errors.push({fieldId: "primer-opt-size", message: "Opt size (" + pOptSz + ") exceeds max (" + pMaxSz + ").", suggestion: "Set opt size between min=" + pMinSz + " and max=" + pMaxSz});
+    }
+  }
+
+  // --- Primer Tm ---
+  var pMinTm = parseFloat(document.getElementById("primer-min-tm").value);
+  var pMaxTm = parseFloat(document.getElementById("primer-max-tm").value);
+  var pOptTm = parseFloat(document.getElementById("primer-opt-tm").value);
+
+  if (isNaN(pMinTm) || pMinTm < 40) {
+    errors.push({fieldId: "primer-min-tm", message: "Invalid minimum Tm.", suggestion: "Enter a value >= 40 °C"});
+  }
+  if (isNaN(pMaxTm) || pMaxTm > 80) {
+    errors.push({fieldId: "primer-max-tm", message: "Invalid maximum Tm.", suggestion: "Enter a value <= 80 °C"});
+  }
+  if (!isNaN(pMinTm) && !isNaN(pMaxTm) && pMinTm > pMaxTm) {
+    errors.push({fieldId: "primer-min-tm", message: "Min cannot exceed Max (" + pMinTm + " > " + pMaxTm + ").", suggestion: "Set Tm min <= max"});
+  }
+  if (!isNaN(pOptTm) && !isNaN(pMinTm) && !isNaN(pMaxTm)) {
+    if (pOptTm < pMinTm) {
+      errors.push({fieldId: "primer-opt-tm", message: "Opt Tm (" + pOptTm + ") is below min (" + pMinTm + ").", suggestion: "Set opt Tm between min=" + pMinTm + " and max=" + pMaxTm + " °C"});
+    } else if (pOptTm > pMaxTm) {
+      errors.push({fieldId: "primer-opt-tm", message: "Opt Tm (" + pOptTm + ") exceeds max (" + pMaxTm + ").", suggestion: "Set opt Tm between min=" + pMinTm + " and max=" + pMaxTm + " °C"});
+    }
+  }
+
+  // --- Primer GC% ---
+  var pGcMin = parseFloat(document.getElementById("primer-gc-min").value);
+  var pGcMax = parseFloat(document.getElementById("primer-gc-max").value);
+  if (isNaN(pGcMin) || pGcMin < 0) {
+    errors.push({fieldId: "primer-gc-min", message: "Invalid minimum GC%.", suggestion: "Enter a value >= 0"});
+  }
+  if (isNaN(pGcMax) || pGcMax > 100) {
+    errors.push({fieldId: "primer-gc-max", message: "Invalid maximum GC%.", suggestion: "Enter a value <= 100"});
+  }
+  if (!isNaN(pGcMin) && !isNaN(pGcMax) && pGcMin > pGcMax) {
+    errors.push({fieldId: "primer-gc-min", message: "Min GC% exceeds Max (" + pGcMin + " > " + pGcMax + ").", suggestion: "Set GC min <= max"});
+  }
+
+  // --- Specificity ---
+  var maxOffMismatch = parseInt(document.getElementById("max-off-target-mismatch").value);
+  var min3prime = parseInt(document.getElementById("min-3prime-match").value);
+  var maxAmpliconSz = parseInt(document.getElementById("max-amplicon-size").value);
+  if (!document.getElementById("skip-specificity").checked) {
+    if (isNaN(maxOffMismatch) || maxOffMismatch < 0) {
+      errors.push({fieldId: "max-off-target-mismatch", message: "Invalid max mismatches.", suggestion: "Enter a value >= 0"});
+    }
+    if (isNaN(min3prime) || min3prime < 3) {
+      errors.push({fieldId: "min-3prime-match", message: "Invalid 3' match length.", suggestion: "Enter a value >= 3"});
+    }
+    if (isNaN(maxAmpliconSz) || maxAmpliconSz < 50) {
+      errors.push({fieldId: "max-amplicon-size", message: "Invalid max amplicon size.", suggestion: "Enter a value >= 50 bp"});
+    }
+    if (!isNaN(prodMax) && !isNaN(maxAmpliconSz) && maxAmpliconSz < prodMax) {
+      errors.push({fieldId: "max-amplicon-size", message: "Max amplicon (" + maxAmpliconSz + ") < product max (" + prodMax + ").", suggestion: "Off-target amplicon limit should be >= product size max"});
+    }
+  }
+
+  // --- Num return ---
+  var numRet = parseInt(document.getElementById("num-return").value);
+  if (isNaN(numRet) || numRet < 1 || numRet > 100) {
+    errors.push({fieldId: "num-return", message: "Invalid number of pairs.", suggestion: "Enter 1-100"});
+  }
+
+  // Show all errors
+  errors.forEach(function(e) {
+    showFieldError(e.fieldId, e.message, e.suggestion);
+  });
+
+  return errors.length > 0 ? errors : null;
+}
+
+// Auto-clear errors on input change
+function onFieldChanged(fieldId) {
+  if (_fieldErrors[fieldId]) {
+    clearFieldError(fieldId);
+    // Re-validate related fields silently
+    var stillErrors = validateForm();
+    // If no errors or only different fields, clear the error box
+    if (!stillErrors || !stillErrors.some(function(e) { return e.fieldId === fieldId; })) {
+      // Field is now OK
+    }
+    // Don't show new errors while user is still editing
+    if (stillErrors) {
+      stillErrors.forEach(function(e) { showFieldError(e.fieldId, e.message, e.suggestion); });
+    }
+  }
+  // Always clear the main error box when user edits
+  hideError();
 }
 
 // === Build Form Data ===
@@ -1206,6 +1610,7 @@ function buildFormData() {
     primer_gc_max: parseFloat(document.getElementById("primer-gc-max").value),
     num_return: parseInt(document.getElementById("num-return").value),
     skip_specificity: !document.getElementById("skip-specificity").checked,
+    off_target_sensitivity: document.getElementById("off-target-sensitivity").value,
     max_off_target_mismatch: parseInt(document.getElementById("max-off-target-mismatch").value),
     min_3prime_match: parseInt(document.getElementById("min-3prime-match").value),
     max_amplicon_size: parseInt(document.getElementById("max-amplicon-size").value),
@@ -1269,7 +1674,7 @@ function cycleLoadingText(idx) {
 function showError(title, msg, suggestions) {
   const box = document.getElementById("error-box");
   document.getElementById("error-title").textContent = title;
-  document.getElementById("error-msg").textContent = msg;
+  document.getElementById("error-msg").innerHTML = msg;
   const sugDiv = document.getElementById("error-suggestions");
   if (suggestions && suggestions.length > 0) {
     sugDiv.innerHTML = "<strong>Suggestions:</strong> " +
@@ -1294,11 +1699,56 @@ function useSuggestion(gene) {
 // === Submit ===
 async function submitForm() {
   hideError();
+  clearAllFieldErrors();
   document.getElementById("results").classList.remove("active");
 
-  const error = validateForm();
-  if (error) {
-    showError("Validation Error", error, []);
+  // Check mode: dispatch to check-primers endpoint
+  if (currentMode === "check") {
+    var fwd = document.getElementById("check-fwd-seq").value.trim();
+    var rev = document.getElementById("check-rev-seq").value.trim();
+    if (!fwd || !rev) {
+      if (!fwd) showFieldError("check-fwd-seq", "Forward primer sequence is required.", "");
+      if (!rev) showFieldError("check-rev-seq", "Reverse primer sequence is required.", "");
+      return;
+    }
+    showLoading();
+    try {
+      var checkData = { forward_primer: fwd, reverse_primer: rev };
+      var enableSpec = document.getElementById("skip-specificity").checked;
+      checkData.skip_specificity = !enableSpec;
+      if (enableSpec) {
+        checkData.off_target_sensitivity = document.getElementById("off-target-sensitivity").value;
+        checkData.max_amplicon_size = parseInt(document.getElementById("max-amplicon-size").value) || 4000;
+      }
+      var resp = await fetch("/api/check-primers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(checkData),
+      });
+      var result = await resp.json();
+      hideLoading();
+      if (!result.success) {
+        showError(result.error || "Check failed", "", []);
+        return;
+      }
+      displayCheckResults(result);
+    } catch (e) {
+      hideLoading();
+      showError("Connection Error", "Could not reach the server. Is it still running?", []);
+    }
+    return;
+  }
+
+  var errors = validateForm();
+  if (errors) {
+    var firstErr = errors[0];
+    var allMsgs = errors.map(function(e) { return e.message; });
+    showError("Please fix the highlighted fields", allMsgs.join("<br>"), []);
+    var firstEl = document.getElementById(firstErr.fieldId);
+    if (firstEl) {
+      firstEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      firstEl.focus();
+    }
     return;
   }
 
@@ -1374,6 +1824,93 @@ function buildFullMatchPattern(fullPrimer, alignment) {
   return pattern;
 }
 
+// === Display Check Primer Results ===
+function displayCheckResults(result) {
+  var panel = document.getElementById("check-results");
+  if (!panel) return;
+  panel.style.display = "block";
+
+  var fwd = result.forward;
+  var rev = result.reverse;
+  var pair = result.pair;
+
+  var scoreColor = pair.total_score >= 80 ? "#2e7d32" : pair.total_score >= 60 ? "#e65100" : "#c62828";
+  var scoreGrade = pair.total_score >= 80 ? "Good" : pair.total_score >= 60 ? "Fair" : "Poor";
+
+  function scoreBar(label, score, max) {
+    var pct = Math.round(score / max * 100);
+    var barColor = pct >= 80 ? "#4caf50" : pct >= 50 ? "#ff9800" : "#f44336";
+    return '<div style="display:flex;align-items:center;gap:6px;margin:2px 0;">' +
+      '<span style="width:110px;font-size:11px;color:#555;">' + label + '</span>' +
+      '<div style="flex:1;max-width:120px;height:8px;background:#eee;border-radius:4px;overflow:hidden;">' +
+      '<div style="width:' + pct + '%;height:100%;background:' + barColor + ';border-radius:4px;"></div></div>' +
+      '<span style="font-size:11px;font-weight:600;min-width:28px;">' + score + '/' + max + '</span></div>';
+  }
+
+  var html = '<div style="border:1px solid #ddd;border-radius:6px;padding:12px;background:#fff;">';
+
+  // Overall score
+  html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">';
+  html += '<div style="width:56px;height:56px;border-radius:50%;background:' + scoreColor + ';color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;">' + pair.total_score + '</div>';
+  html += '<div><strong style="font-size:16px;color:' + scoreColor + ';">' + scoreGrade + '</strong><span style="color:#888;font-size:12px;"> /100</span>';
+  html += '<div style="font-size:11px;color:#888;">Per-primer avg: ' + pair.per_primer_avg + ' + Cross: ' + pair.cross_total + '</div></div></div>';
+
+  // Primer details
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">';
+  html += '<div style="background:#e3f2fd;border-radius:4px;padding:8px;"><strong style="color:#1565c0;">Forward</strong>';
+  html += '<div style="font-family:monospace;font-size:12px;word-break:break-all;">' + fwd.sequence + '</div>';
+  html += '<div style="font-size:11px;color:#555;">' + fwd.length + ' nt | Tm=' + fwd.tm + '°C | GC=' + fwd.gc_percent + '%</div></div>';
+  html += '<div style="background:#ffebee;border-radius:4px;padding:8px;"><strong style="color:#c62828;">Reverse</strong>';
+  html += '<div style="font-family:monospace;font-size:12px;word-break:break-all;">' + rev.sequence + '</div>';
+  html += '<div style="font-size:11px;color:#555;">' + rev.length + ' nt | Tm=' + rev.tm + '°C | GC=' + rev.gc_percent + '%</div></div>';
+  html += '</div>';
+  html += '<div style="font-size:12px;margin-bottom:8px;">Tm difference: <strong>' + pair.delta_tm + '°C</strong></div>';
+
+  // Score breakdown
+  html += '<details open><summary style="font-weight:600;font-size:13px;cursor:pointer;">Score Breakdown</summary>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">';
+  html += '<div><strong style="font-size:11px;color:#1565c0;">Forward (' + fwd.scores.total + ')</strong>';
+  for (var k in fwd.scores) {
+    if (k === 'total') continue;
+    html += scoreBar(k.replace(/_/g, ' '), fwd.scores[k], {terminal_base:10,end_stability:10,hairpin:10,tm:10,gc_content:15,base_distribution:15,self_dimer:10}[k] || 10);
+  }
+  html += '</div><div><strong style="font-size:11px;color:#c62828;">Reverse (' + rev.scores.total + ')</strong>';
+  for (var k2 in rev.scores) {
+    if (k2 === 'total') continue;
+    html += scoreBar(k2.replace(/_/g, ' '), rev.scores[k2], {terminal_base:10,end_stability:10,hairpin:10,tm:10,gc_content:15,base_distribution:15,self_dimer:10}[k2] || 10);
+  }
+  html += '</div></div>';
+  html += '<div style="margin-top:4px;"><strong style="font-size:11px;">Cross Scores (' + pair.cross_total + ')</strong>';
+  html += scoreBar('delta tm', pair.cross_scores.delta_tm, 10);
+  html += scoreBar('cross dimer', pair.cross_scores.cross_dimer, 10);
+  html += '</div>';
+  html += '</details>';
+
+  // Specificity
+  var spec = result.specificity;
+  if (spec) {
+    if (spec.error) {
+      html += '<div style="margin-top:8px;color:#888;font-size:12px;">Specificity: ' + spec.error + '</div>';
+    } else {
+      var specColor = spec.is_specific ? "#2e7d32" : "#c62828";
+      html += '<div style="margin-top:10px;padding:8px;border-radius:4px;background:' + (spec.is_specific ? '#e8f5e9' : '#ffebee') + ';">';
+      html += '<strong style="color:' + specColor + ';">Specificity: ' + (spec.is_specific ? 'PASS' : 'FAIL') + '</strong>';
+      html += '<span style="font-size:12px;color:#555;"> (' + spec.off_target_count + ' off-target amplicons)</span>';
+      for (var ai = 0; ai < spec.off_target_amplicons.length && ai < 10; ai++) {
+        var a = spec.off_target_amplicons[ai];
+        html += '<div style="font-size:11px;margin:2px 0 0 12px;">' + a.chromosome + ': ' + a.product_size + ' bp';
+        if (a.gene_name) html += ' gene=' + a.gene_name;
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+  }
+
+  html += '</div>';
+  panel.innerHTML = html;
+  panel.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 // === Render Results (NCBI-style) ===
 function renderResults(result) {
   const resultsDiv = document.getElementById("results");
@@ -1382,6 +1919,8 @@ function renderResults(result) {
   const reportsDiv = document.getElementById("detailed-reports");
 
   const pairs = result.pairs || [];
+  currentGene = document.getElementById("gene-input").value.trim();
+  currentPairs = pairs;
   const specificCount = pairs.filter(p => p.specificity && p.specificity.is_specific).length;
   const offTargetTotal = pairs.reduce((sum, p) => sum + (p.specificity ? p.specificity.off_target_count : 0), 0);
   const specificityDone = pairs.length > 0 && pairs[0].specificity !== undefined;
@@ -1399,6 +1938,37 @@ function renderResults(result) {
   summaryDiv.innerHTML += ` <span class="elapsed">Completed in ${result.elapsed_seconds}s</span>`;
   if (result.warnings && result.warnings.length > 0) {
     summaryDiv.innerHTML += `<br><small>${result.warnings.join("; ")}</small>`;
+  }
+
+  // Gene annotation panel
+  const annPanel = document.getElementById("gene-annotation-panel");
+  if (result.gene_annotation) {
+    const ann = result.gene_annotation;
+    var goHtml = "";
+    if (ann.go_terms) {
+      if (ann.go_terms.biological_process && ann.go_terms.biological_process.length > 0) {
+        goHtml += '<div><strong>Biological Process:</strong> ' + ann.go_terms.biological_process.slice(0,2).join("; ") + '</div>';
+      }
+      if (ann.go_terms.molecular_function && ann.go_terms.molecular_function.length > 0) {
+        goHtml += '<div><strong>Molecular Function:</strong> ' + ann.go_terms.molecular_function.slice(0,2).join("; ") + '</div>';
+      }
+      if (ann.go_terms.cellular_component && ann.go_terms.cellular_component.length > 0) {
+        goHtml += '<div><strong>Cellular Component:</strong> ' + ann.go_terms.cellular_component.slice(0,2).join("; ") + '</div>';
+      }
+    }
+    annPanel.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+        <div style="flex:1;min-width:250px;">
+          <strong style="color:#1a3a4a;font-size:15px;">${currentGene}</strong>
+          <span style="color:#2b5f8a;margin-left:8px;font-weight:600;">${ann.gene_name || ""}</span>
+          ${ann.arabidopsis_homolog ? '<div style="color:#555;margin-top:4px;">Arabidopsis homolog: <strong>' + ann.arabidopsis_homolog + '</strong></div>' : ""}
+          ${ann.function_description ? '<div style="color:#666;margin-top:4px;max-width:600px;">' + ann.function_description.substring(0, 200) + (ann.function_description.length > 200 ? '...' : '') + '</div>' : ""}
+        </div>
+        ${goHtml ? '<div style="flex:1;min-width:250px;">' + goHtml + '</div>' : ""}
+      </div>`;
+    annPanel.style.display = "block";
+  } else {
+    annPanel.style.display = "none";
   }
 
   // Main summary table (NCBI-style: rows grouped by pair with F/R sub-rows)
@@ -1501,6 +2071,8 @@ function renderResults(result) {
       var chrKeys = Object.keys(chrGroups);
       chrKeys.forEach(function(chr) {
         var amplicons = chrGroups[chr];
+        var geneLabel = amplicons[0].gene_name ? ' (' + amplicons[0].gene_name + ')' : '';
+
         // Collect all primer bindings for this chromosome
         var bindingsHtml = '';
         amplicons.forEach(function(a) {
@@ -1526,7 +2098,7 @@ function renderResults(result) {
         unintendedHtml += `
           <div class="unintended-template">
             <div class="unintended-header">
-              &gt;<span class="offtarget-loc">${chr}</span>&nbsp; Glycine max Wm82 v4.0
+              &gt;<span class="offtarget-loc">${chr}</span>${geneLabel}&nbsp; Glycine max Wm82 v4.0
             </div>
             ${bindingsHtml}
           </div>`;
@@ -1588,7 +2160,13 @@ function renderResults(result) {
 
     return `
     <div class="pair-card">
-      <div class="pair-card-header">Primer pair ${p.index} &mdash; Product: ${p.product_size} bp &mdash; Penalty: ${p.penalty}</div>
+      <div class="pair-card-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Primer pair ${p.index} &mdash; Penalty: ${p.penalty}</span>
+        ${spec.is_specific !== undefined ? (spec.is_specific
+          ? '<span class="badge badge-pass" style="font-size:12px;">SPECIFIC</span>'
+          : '<span class="badge badge-fail" style="font-size:12px;">' + (spec.off_target_count || 0) + ' off-targets</span>'
+        ) : '<span class="badge" style="background:#eee;color:#888;font-size:12px;">No check</span>'}
+      </div>
       <div class="pair-card-body">
         ${scoreBreakdownHtml}
         <table class="sub-table">
@@ -1633,7 +2211,23 @@ function renderResults(result) {
             </tr>
           </tbody>
         </table>
-        <div class="product-size-line">Product length: ${p.product_size} bp &mdash; Tm: ${p.product_tm}&deg;C</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin:8px 0;">
+          <div class="product-size-line" style="flex:1;min-width:200px;background:#f8f9fa;padding:8px 12px;border-radius:4px;border-left:3px solid #2b5f8a;">
+            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">DNA Amplicon (genomic)</div>
+            <div style="font-weight:600;">${p.product_size} bp <span style="font-weight:400;color:#666;font-size:13px;">Tm: ${p.product_tm}&deg;C</span></div>
+            <div style="font-size:11px;color:#888;">With introns &mdash; genomic PCR product</div>
+          </div>
+          ${p.cdna_amplicon ? `
+          <div class="product-size-line" style="flex:1;min-width:200px;background:#f0f7ff;padding:8px 12px;border-radius:4px;border-left:3px solid #1a7a3a;">
+            <div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.5px;">cDNA Amplicon (spliced)</div>
+            <div style="font-weight:600;color:#155724;">${p.cdna_amplicon.length} bp <span style="font-weight:400;color:#666;font-size:13px;">exon-only</span></div>
+            <div style="font-size:11px;color:#888;">Position: ${p.cdna_amplicon.left_position + 1}-${p.cdna_amplicon.right_position + 1} &mdash; no introns</div>
+          </div>` : `
+          <div style="flex:1;min-width:200px;background:#fff;padding:8px 12px;border-radius:4px;border:1px dashed #ccc;opacity:0.6;">
+            <div style="font-size:11px;color:#999;text-transform:uppercase;">cDNA (unavailable)</div>
+            <div style="font-size:12px;color:#999;">Transcript FASTA not loaded</div>
+          </div>`}
+        </div>
         ${targetHtml}
         ${offtargetHtml}
       </div>
@@ -1641,10 +2235,46 @@ function renderResults(result) {
   }).join("");
 
   resultsDiv.classList.add("active");
+
+  // Show GenBank toolbar for gene-mode results
+  var gbBar = document.getElementById("genbank-toolbar");
+  if (gbBar && currentGene) {
+    gbBar.style.display = "block";
+  }
 }
 
 // toggleDetail no longer needed - replaced by NCBI-style detailed reports
 function toggleDetail(idx) {}
+
+async function downloadGenBank() {
+  if (!currentGene || currentPairs.length === 0) {
+    alert("No results to export. Design primers first.");
+    return;
+  }
+  try {
+    var resp = await fetch("/api/genbank", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gene: currentGene, pairs: currentPairs }),
+    });
+    if (!resp.ok) {
+      var err = await resp.json();
+      alert("GenBank export failed: " + (err.error || resp.statusText));
+      return;
+    }
+    var blob = await resp.blob();
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = currentGene.replace(/\./g, "_") + ".gb";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert("GenBank export error: " + e.message);
+  }
+}
 
 // === Keyboard shortcuts ===
 document.addEventListener("keydown", function(e) {

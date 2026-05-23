@@ -11,20 +11,26 @@ from typing import Dict, List, Optional
 
 from flask import Flask, jsonify, render_template, request
 
+from .annotation import get_gene_annotation, load_annotations, parse_go_terms
 from .blast_db import get_blast_db
 from .cli import build_parser, parse_region
 from .constants import (
+    DEFAULT_ANNOTATION_TSV,
     DEFAULT_BLASTN_PATH,
     DEFAULT_GENOME_FA,
     DEFAULT_GFF3,
+    DEFAULT_TRANSCRIPT_FA,
     DEFAULT_MAKEBLASTDB_PATH,
     DEFAULT_MAX_AMPLICON_SIZE,
     DEFAULT_MAX_OFF_TARGET_MISMATCH,
     DEFAULT_MIN_3PRIME_MATCH,
+    OFF_TARGET_PRESETS,
 )
 from .fasta_index import load_fasta_index, extract_sequence
-from .gff_index import load_or_build_index
+from .genbank import export_genbank
+from .gff_index import load_or_build_index, build_genomic_gene_map
 from .primer_design import design_primers
+from .primer_check import check_primers
 from .primer_score import score_primer_pair
 from .sequence import (
     extract_gene_sequence,
@@ -33,11 +39,19 @@ from .sequence import (
     get_target_coordinates,
 )
 from .specificity import evaluate_specificity, run_blast_primers
+from .transcript_seq import (
+    build_transcript_seq_index,
+    compute_cdna_amplicon,
+    extract_transcript_sequence,
+)
 
 # Module-level globals initialized at startup
 _fai = None
 _gene_index = None
 _transcript_index = None
+_transcript_seq_index = None
+_genomic_gene_map = None
+_annotation_index = None
 _blast_db_path: str = ""
 _server_config: dict = {}
 
@@ -47,6 +61,8 @@ app = Flask(__name__)
 def init_server(
     genome_path: str = DEFAULT_GENOME_FA,
     gff3_path: str = DEFAULT_GFF3,
+    transcript_path: str = DEFAULT_TRANSCRIPT_FA,
+    annotation_path: str = DEFAULT_ANNOTATION_TSV,
     blast_db: str = "",
     blastn_path: str = DEFAULT_BLASTN_PATH,
     makeblastdb_path: str = DEFAULT_MAKEBLASTDB_PATH,
@@ -56,7 +72,7 @@ def init_server(
 
     Returns a dict of status messages.
     """
-    global _fai, _gene_index, _transcript_index, _blast_db_path, _server_config
+    global _fai, _gene_index, _transcript_index, _transcript_seq_index, _genomic_gene_map, _annotation_index, _blast_db_path, _server_config
 
     status = {}
 
@@ -86,9 +102,37 @@ def init_server(
         _gene_index, _transcript_index = load_or_build_index(gff3_path, cache_dir)
         status["gff_index"] = f"Loaded {len(_transcript_index)} transcripts"
         print(status["gff_index"])
+
+        # Build genomic coordinate -> gene name map for off-target annotation
+        if _gene_index:
+            _genomic_gene_map = build_genomic_gene_map(_gene_index)
+            status["gene_map"] = f"{len(_genomic_gene_map)} chromosomes indexed"
     except Exception as e:
         status["gff_index"] = f"Failed: {e}"
         print(f"WARNING: {e}", file=sys.stderr)
+
+    # Load transcript (cDNA) FASTA index
+    if os.path.exists(transcript_path):
+        try:
+            _transcript_seq_index = build_transcript_seq_index(transcript_path)
+            status["transcript_fasta"] = f"Loaded {len(_transcript_seq_index)} transcripts"
+            print(status["transcript_fasta"])
+        except Exception as e:
+            status["transcript_fasta"] = f"Failed: {e}"
+            print(f"WARNING: transcript FASTA not available: {e}", file=sys.stderr)
+    else:
+        status["transcript_fasta"] = f"Not found: {transcript_path}"
+        print(f"WARNING: transcript FASTA not found: {transcript_path}", file=sys.stderr)
+
+    # Load soybean-Arabidopsis annotation
+    if os.path.exists(annotation_path):
+        try:
+            _annotation_index = load_annotations(annotation_path)
+            status["annotation"] = f"Loaded {len(_annotation_index)} gene annotations"
+            print(status["annotation"])
+        except Exception as e:
+            status["annotation"] = f"Failed: {e}"
+            print(f"WARNING: annotation not available: {e}", file=sys.stderr)
 
     # Resolve BLAST DB
     if blast_db:
@@ -109,6 +153,8 @@ def init_server(
     _server_config = {
         "genome_path": genome_path,
         "gff3_path": gff3_path,
+        "transcript_path": transcript_path,
+        "annotation_path": annotation_path,
         "blast_db": _blast_db_path,
         "blastn_path": blastn_path,
         "makeblastdb_path": makeblastdb_path,
@@ -398,6 +444,69 @@ def _compute_template_pattern(primer_seq, hit):
     return ''.join(pattern)
 
 
+@app.route("/api/annotation/<gene_id>")
+def api_annotation(gene_id):
+    """Return functional annotation for a gene (Arabidopsis homolog, GO, description)."""
+    if _annotation_index is None:
+        return jsonify({"error": "Annotation index not loaded"}), 404
+
+    ann = get_gene_annotation(gene_id, _annotation_index)
+    if not ann:
+        return jsonify({"error": f"No annotation for {gene_id}"}), 404
+
+    return jsonify({
+        "gene": gene_id,
+        "gene_name": ann.get("gene_name", ""),
+        "arabidopsis_homolog": ann.get("arabidopsis_homolog", ""),
+        "function_description": ann.get("function_desc", ""),
+        "go_terms": parse_go_terms(ann.get("go_annotation", "")),
+        "notes": ann.get("notes", ""),
+    })
+
+
+def _compute_cdna_for_pair(pair, transcript, exons, seqid, ts_index):
+    """Compute cDNA amplicon for a primer pair on a gene."""
+    if not exons or not ts_index:
+        return None
+    try:
+        # Determine genomic binding positions
+        gstart = transcript.start
+        gend = transcript.end
+        gstrand = transcript.strand
+
+        if gstrand == "+":
+            left_gen_start = gstart + pair.left_position
+            right_gen_end = gstart + pair.right_position
+        else:
+            left_gen_end = gend - pair.left_position
+            right_gen_start = gend - pair.right_position
+
+        # Map to cDNA coordinates
+        left_gen_pos = left_gen_start if gstrand == "+" else left_gen_end
+        right_gen_pos = right_gen_end if gstrand == "+" else right_gen_start
+
+        transcript_id = transcript.mrna_id
+        if transcript_id not in ts_index:
+            # Try to find matching transcript ID
+            for tid in ts_index:
+                if transcript.gene_short_name in tid:
+                    transcript_id = tid
+                    break
+
+        result = compute_cdna_amplicon(
+            fasta_path=_server_config.get("transcript_path", DEFAULT_TRANSCRIPT_FA),
+            transcript_id=transcript_id,
+            exons=exons,
+            strand=gstrand,
+            left_genomic_pos=left_gen_pos,
+            right_genomic_pos=right_gen_pos,
+            index=ts_index,
+        )
+        return result
+    except Exception:
+        return None
+
+
 @app.route("/api/design", methods=["POST"])
 def api_design():
     """Core endpoint: design primers and check specificity."""
@@ -433,6 +542,7 @@ def api_design():
         "primer_gc_max": float(data.get("primer_gc_max", 65.0)),
         "num_return": int(data.get("num_return", 5)),
         "skip_specificity": bool(data.get("skip_specificity", False)),
+        "off_target_sensitivity": data.get("off_target_sensitivity", "standard"),
         "max_off_target_mismatch": int(data.get("max_off_target_mismatch", DEFAULT_MAX_OFF_TARGET_MISMATCH)),
         "min_3prime_match": int(data.get("min_3prime_match", DEFAULT_MIN_3PRIME_MATCH)),
         "max_amplicon_size": int(data.get("max_amplicon_size", DEFAULT_MAX_AMPLICON_SIZE)),
@@ -568,12 +678,17 @@ def api_design():
                 warnings.append(f"Target region ({tgt_len}bp) nearly fills the {len(template)}bp template.")
 
             params["product_size_min"] = max(params["product_size_min"], abs_min)
-            params["product_size_max"] = max(params["product_size_max"], min(ideal, len(template)))
-            # Ensure max never exceeds template length (Primer3 hard constraint)
+            # Never auto-expand product_size_max beyond the user's input.
+            # If min > max after adjustment, that's a constraint conflict — warn and keep both.
             if params["product_size_max"] > len(template):
                 params["product_size_max"] = len(template)
             if params["product_size_max"] < params["product_size_min"]:
-                params["product_size_max"] = min(params["product_size_min"] + 200, len(template))
+                warnings.append(
+                    "Target region ({0} bp) plus primers requires >= {1} bp product, "
+                    "but product_size_max is {2}. Increase product_size_max to >= {1}.".format(
+                        tgt_len, params["product_size_min"], params["product_size_max"]
+                    )
+                )
 
         elif params["target"] not in ("gene", "all"):
             target_coords = get_target_coordinates(transcript, params["target"])
@@ -673,7 +788,7 @@ def api_design():
                 target_start=tgt_start,
                 target_length=tgt_len,
                 product_size_min=min(70, params["product_size_min"]),
-                product_size_max=max(params["product_size_max"], 1000),
+                product_size_max=params["product_size_max"],
                 primer_opt_size=params["primer_opt_size"],
                 primer_min_size=max(15, params["primer_min_size"] - 3),
                 primer_max_size=params["primer_max_size"] + 3,
@@ -759,15 +874,20 @@ def api_design():
                     left_coords = (0, len(pair.left_primer))
                     right_coords = (0, len(pair.right_primer))
 
+                # Apply off-target sensitivity preset
+                sensitivity = params["off_target_sensitivity"]
+                preset = OFF_TARGET_PRESETS.get(sensitivity, OFF_TARGET_PRESETS["standard"])
                 result = evaluate_specificity(
                     left_hits=left_hits,
                     right_hits=right_hits,
                     target_seqid=seqid if seqid else "",
                     target_left_coords=left_coords,
                     target_right_coords=right_coords,
-                    max_mismatches=params["max_off_target_mismatch"],
-                    min_3prime_match=params["min_3prime_match"],
+                    max_mismatches=preset["max_mismatches"],
+                    min_3prime_match=preset["min_3prime"],
+                    min_alignment_cover=preset["min_coverage"],
                     max_amplicon_size=params["max_amplicon_size"],
+                    genomic_gene_map=_genomic_gene_map,
                 )
                 specificity_results.append(result)
 
@@ -783,14 +903,41 @@ def api_design():
         except Exception as e:
             warnings.append(f"Specificity check failed: {e}")
 
+    # --- Compute cDNA amplicons (gene mode only) ---
+    cdna_info_list = []
+    if input_mode == "gene" and transcript and _transcript_seq_index:
+        exons = transcript.all_exons or transcript.cds_exons
+        for pair in pairs:
+            cdna = _compute_cdna_for_pair(
+                pair, transcript, exons,
+                seqid if seqid else transcript.seqid,
+                _transcript_seq_index,
+            )
+            cdna_info_list.append(cdna)
+    else:
+        cdna_info_list = [None] * len(pairs)
+
     # --- Step 4: Build response ---
     elapsed = round(time.time() - t_start, 1)
+
+    # --- Gene annotation lookup ---
+    annotation = None
+    if input_mode == "gene" and transcript and _annotation_index:
+        ann = get_gene_annotation(transcript.gene_short_name, _annotation_index)
+        if ann:
+            annotation = {
+                "gene_name": ann.get("gene_name", ""),
+                "arabidopsis_homolog": ann.get("arabidopsis_homolog", ""),
+                "function_description": ann.get("function_desc", ""),
+                "go_terms": parse_go_terms(ann.get("go_annotation", "")),
+            }
 
     response = {
         "success": True,
         "template": template_info,
         "template_length": len(template),
         "target_region": [tgt_start, tgt_len] if tgt_start is not None else None,
+        "gene_annotation": annotation,
         "pairs": [],
         "warnings": warnings,
         "elapsed_seconds": elapsed,
@@ -826,6 +973,23 @@ def api_design():
             },
         }
 
+        # DNA amplicon (genomic, with introns)
+        pair_dict["dna_amplicon"] = {
+            "length": pair.product_size,
+            "tm": round(pair.pair_product_tm, 1),
+        }
+
+        # cDNA amplicon (spliced, no introns)
+        if cdna_info_list and i < len(cdna_info_list) and cdna_info_list[i]:
+            pair_dict["cdna_amplicon"] = {
+                "sequence": cdna_info_list[i]["cdna_sequence"],
+                "length": cdna_info_list[i]["cdna_length"],
+                "left_position": cdna_info_list[i]["left_cdna_position"],
+                "right_position": cdna_info_list[i]["right_cdna_position"],
+            }
+        else:
+            pair_dict["cdna_amplicon"] = None
+
         # Primer quality score (100-point scale)
         try:
             pair_dict["score"] = score_primer_pair(pair)
@@ -840,6 +1004,7 @@ def api_design():
                 "off_target_amplicons": [
                     {
                         "chromosome": a.chromosome,
+                        "gene_name": a.gene_name or "",
                         "left_position": a.left_hit.subject_start,
                         "right_position": a.right_hit.subject_end,
                         "product_size": a.product_size,
@@ -895,11 +1060,218 @@ def api_design():
     return jsonify(response)
 
 
+@app.route("/api/check-primers", methods=["POST"])
+def api_check_primers():
+    """Check user-provided primers for quality and specificity."""
+    try:
+        data = request.get_json(force=True)
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid JSON body."}), 400
+
+    fwd_seq = (data.get("forward_primer") or "").strip()
+    rev_seq = (data.get("reverse_primer") or "").strip()
+
+    if not fwd_seq or not rev_seq:
+        return jsonify({"success": False, "error": "Both forward_primer and reverse_primer are required."}), 400
+
+    try:
+        result = check_primers(fwd_seq, rev_seq)
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+    # Specificity check
+    if not data.get("skip_specificity", False) and _blast_db_path:
+        try:
+            preset_name = data.get("off_target_sensitivity", "standard")
+            preset = OFF_TARGET_PRESETS.get(preset_name, OFF_TARGET_PRESETS["standard"])
+
+            hits = run_blast_primers(
+                primer_sequences=[fwd_seq, rev_seq],
+                blast_db=_blast_db_path,
+                blastn_path=_server_config["blastn_path"],
+            )
+
+            spec_result = evaluate_specificity(
+                left_hits=hits.get(fwd_seq, []),
+                right_hits=hits.get(rev_seq, []),
+                target_seqid="",
+                target_left_coords=(-1, -1),
+                target_right_coords=(-1, -1),
+                max_mismatches=preset["max_mismatches"],
+                min_3prime_match=preset["min_3prime"],
+                min_alignment_cover=preset["min_coverage"],
+                max_amplicon_size=int(data.get("max_amplicon_size", DEFAULT_MAX_AMPLICON_SIZE)),
+                genomic_gene_map=_genomic_gene_map,
+            )
+
+            result["specificity"] = {
+                "is_specific": spec_result.is_specific,
+                "off_target_count": spec_result.off_target_count,
+                "off_target_amplicons": [
+                    {
+                        "chromosome": a.chromosome,
+                        "product_size": a.product_size,
+                        "gene_name": a.gene_name,
+                    }
+                    for a in spec_result.off_target_amplicons
+                ],
+            }
+        except Exception as e:
+            result["specificity"] = {"error": f"Specificity check failed: {e}"}
+
+    return jsonify({"success": True, **result})
+
+
+@app.route("/api/batch-export", methods=["POST"])
+def api_batch_export():
+    """Batch export multiple genes to a combined GenBank file."""
+    try:
+        data = request.get_json(force=True)
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid JSON body"}), 400
+
+    gene_list = data.get("genes", [])
+    if not gene_list or not isinstance(gene_list, list):
+        return jsonify({"success": False, "error": "Provide 'genes' as a list of gene names"}), 400
+
+    if _transcript_index is None or _gene_index is None:
+        return jsonify({"success": False, "error": "GFF3 index not loaded"}), 500
+
+    from .genbank import export_genbank_multi_gene
+
+    entries = []
+    not_found = []
+    for gene_name in gene_list:
+        transcript = _transcript_index.get(gene_name)
+        gene_record = _gene_index.get(gene_name)
+        if not transcript or not gene_record:
+            not_found.append(gene_name)
+            continue
+
+        template = extract_gene_sequence(_server_config["genome_path"], transcript, _fai)
+        if not template:
+            continue
+
+        annotation = None
+        if _annotation_index:
+            annotation = get_gene_annotation(transcript.gene_short_name, _annotation_index)
+
+        entries.append({
+            "gene_name": gene_name,
+            "gene_record": gene_record,
+            "transcript": transcript,
+            "template_sequence": template,
+            "pairs": [],  # Template only — primers need separate design
+            "annotation": annotation,
+        })
+
+    if not entries:
+        return jsonify({"success": False, "error": "No genes found", "not_found": not_found}), 404
+
+    # Use the first entry with annotation workaround
+    gb_text = export_genbank_multi_gene(entries)
+
+    from flask import Response
+    return Response(
+        gb_text,
+        mimetype="text/plain",
+        headers={"Content-Disposition": f"attachment; filename=batch_export.gb"},
+    )
+
+
+@app.route("/api/genbank", methods=["POST"])
+def api_genbank():
+    """Generate and download a GenBank (.gb) file for gene + primer pairs."""
+    try:
+        data = request.get_json(force=True)
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid JSON body"}), 400
+
+    gene_name = (data.get("gene") or "").strip()
+    if not gene_name:
+        return jsonify({"success": False, "error": "Gene name is required"}), 400
+
+    if _transcript_index is None or _gene_index is None:
+        return jsonify({"success": False, "error": "GFF3 index not loaded"}), 500
+
+    transcript = _transcript_index.get(gene_name)
+    gene_record = _gene_index.get(gene_name)
+
+    if not transcript:
+        return jsonify({"success": False, "error": f"Gene '{gene_name}' not found"}), 404
+
+    # Extract template
+    template = extract_gene_sequence(
+        _server_config["genome_path"], transcript, _fai,
+    )
+    if not template:
+        return jsonify({"success": False, "error": "Failed to extract gene sequence"}), 500
+
+    # Parse primer pairs from request
+    pairs_data = data.get("pairs", [])
+    pairs = []
+    specificity_raw = []
+    cdna_info_list = []
+
+    exons = transcript.all_exons or transcript.cds_exons
+
+    for pd in pairs_data:
+        from .primer_design import PrimerPair
+        pair = PrimerPair(
+            left_primer=pd.get("forward_primer", ""),
+            right_primer=pd.get("reverse_primer", ""),
+            left_tm=pd.get("forward_tm", 0),
+            right_tm=pd.get("reverse_tm", 0),
+            left_gc=pd.get("forward_gc_percent", 0),
+            right_gc=pd.get("reverse_gc_percent", 0),
+            product_size=pd.get("product_size", 0),
+            left_position=pd.get("forward_position", 0),
+            right_position=pd.get("reverse_position", 0),
+            penalty=pd.get("penalty", 0),
+            pair_product_tm=pd.get("product_tm", 0),
+        )
+        pairs.append(pair)
+
+        # Reconstruct specificity if available
+        spec = pd.get("specificity")
+        if spec:
+            specificity_raw.append(spec)
+        else:
+            specificity_raw.append(None)
+
+        # Compute cDNA
+        cdna = _compute_cdna_for_pair(pair, transcript, exons,
+                                       transcript.seqid, _transcript_seq_index)
+        cdna_info_list.append(cdna)
+
+    gb_text = export_genbank(
+        gene_name=gene_name,
+        gene_record=gene_record,
+        transcript=transcript,
+        template_sequence=template,
+        pairs=pairs,
+        specificity_results=None,
+        cdna_info=cdna_info_list,
+    )
+
+    from flask import Response
+    safe_name = gene_name.replace(".", "_")
+    return Response(
+        gb_text,
+        mimetype="text/plain",
+        headers={
+            "Content-Disposition": f"attachment; filename={safe_name}.gb",
+        },
+    )
+
+
 def run_server(args):
     """Initialize server and start Flask app. Called when --serve is passed."""
     init_server(
         genome_path=args.genome,
         gff3_path=args.gff3,
+        transcript_path=getattr(args, "transcript_fasta", DEFAULT_TRANSCRIPT_FA),
+        annotation_path=getattr(args, "annotation_tsv", DEFAULT_ANNOTATION_TSV),
         blast_db=args.blast_db or "",
         blastn_path=args.blastn,
         makeblastdb_path=args.makeblastdb,

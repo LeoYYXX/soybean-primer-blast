@@ -1,3 +1,3 @@
-"""Soybean Primer-BLAST CLI — local primer design with specificity checking."""
+"""Soybean Primer-BLAST — local primer design with specificity checking."""
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"

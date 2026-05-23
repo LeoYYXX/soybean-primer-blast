@@ -6,9 +6,11 @@ import sys
 from typing import Optional
 
 from .constants import (
+    DEFAULT_ANNOTATION_TSV,
     DEFAULT_BLASTN_PATH,
     DEFAULT_GENOME_FA,
     DEFAULT_GFF3,
+    DEFAULT_TRANSCRIPT_FA,
     DEFAULT_MAKEBLASTDB_PATH,
     DEFAULT_MAX_AMPLICON_SIZE,
     DEFAULT_MAX_OFF_TARGET_MISMATCH,
@@ -57,6 +59,10 @@ Examples:
         "--sequence", "-s", type=str,
         help="Direct FASTA sequence or path to FASTA file containing the template",
     )
+    input_group.add_argument(
+        "--check-primers", type=str,
+        help="Check existing primer pair: forward_seq,reverse_seq (e.g. ATCG...,GCTA...)",
+    )
 
     # Target
     parser.add_argument(
@@ -97,11 +103,21 @@ Examples:
         "--max-amplicon-size", type=int, default=DEFAULT_MAX_AMPLICON_SIZE,
         help="Max amplicon size for off-target detection",
     )
+    spec_group.add_argument(
+        "--off-target-sensitivity", type=str,
+        choices=["strict", "standard", "sensitive", "relaxed"],
+        default="standard",
+        help="Off-target detection sensitivity (default: standard)",
+    )
 
     # File paths
     path_group = parser.add_argument_group("File paths")
     path_group.add_argument("--genome", type=str, default=DEFAULT_GENOME_FA)
     path_group.add_argument("--gff3", type=str, default=DEFAULT_GFF3)
+    path_group.add_argument("--transcript-fasta", type=str, default=DEFAULT_TRANSCRIPT_FA,
+                            help="Transcript (cDNA) FASTA for cDNA amplicon computation")
+    path_group.add_argument("--annotation-tsv", type=str, default=DEFAULT_ANNOTATION_TSV,
+                            help="Soybean-Arabidopsis annotation TSV")
     path_group.add_argument("--blast-db", type=str, help="Pre-built BLAST DB (skip auto-build)")
     path_group.add_argument("--blastn", type=str, default=DEFAULT_BLASTN_PATH)
     path_group.add_argument("--makeblastdb", type=str, default=DEFAULT_MAKEBLASTDB_PATH)
@@ -110,8 +126,12 @@ Examples:
     # Output
     parser.add_argument("--output", "-o", type=str, default="-", help="Output file (default: stdout)")
     parser.add_argument(
-        "--format", "-f", type=str, choices=["text", "json", "tsv"], default="text",
-        help="Output format",
+        "--format", "-f", type=str, choices=["text", "json", "tsv", "genbank"], default="text",
+        help="Output format (text, json, tsv, genbank)",
+    )
+    parser.add_argument(
+        "--export-genbank", type=str, default="",
+        help="Export results as GenBank (.gb) file at the given path",
     )
 
     # Misc

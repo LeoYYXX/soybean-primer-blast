@@ -131,16 +131,18 @@ def design_primers(
         excl_str = " ".join(f"{s},{l}" for s, l in excluded_regions)
         seq_args["SEQUENCE_EXCLUDED_REGION"] = excl_str
 
-    # When a target region is specified, auto-expand product_size if needed
-    # (primers must flank the target, so product >= target_length + 2 * primer_size)
+    # When a target region is specified, ensure the minimum product size
+    # can physically accommodate the target + flanking primers.
+    # Do NOT auto-expand max_product — the user's product_size_max is a hard constraint.
     min_product = product_size_min
     max_product = product_size_max
     if target_start is not None and target_length is not None:
         min_needed = target_length + 2 * primer_min_size
         if min_product < min_needed:
             min_product = min_needed
-        if max_product < min_product + 200:
-            max_product = max(min_product + 200, product_size_max)
+        # Ensure valid Primer3 input (min must be <= max)
+        if max_product < min_product:
+            max_product = min_product
 
     global_args: Dict[str, Any] = {
         "PRIMER_TASK": "generic",

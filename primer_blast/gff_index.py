@@ -9,6 +9,8 @@ import pickle
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+from .fasta_index import reverse_complement
+
 
 @dataclass
 class GeneRecord:
@@ -248,3 +250,59 @@ def load_or_build_index(
         pickle.dump((gene_index, transcript_index), f, protocol=pickle.HIGHEST_PROTOCOL)
 
     return gene_index, transcript_index
+
+
+def find_overlapping_genes(
+    seqid: str,
+    pos: int,
+    gene_index: Dict[str, "GeneRecord"],
+) -> List[str]:
+    """Find gene short names that overlap a given genomic position.
+
+    Args:
+        seqid: Chromosome/contig name.
+        pos: Genomic position (1-based).
+        gene_index: Dict from build_gene_index or load_or_build_index.
+
+    Returns:
+        List of gene short names (may be empty).
+    """
+    hits = []
+    for gene_name, gene in gene_index.items():
+        if gene.seqid == seqid and gene.start <= pos <= gene.end:
+            hits.append(gene_name)
+    return hits
+
+
+def build_genomic_gene_map(
+    gene_index: Dict[str, "GeneRecord"],
+) -> Dict[str, List[Tuple[int, int, str]]]:
+    """Build a seqid -> [(start, end, gene_name), ...] map sorted by start.
+
+    Useful for repeated positional gene lookups.
+    """
+    by_seqid: Dict[str, List[Tuple[int, int, str]]] = {}
+    for gene_name, gene in gene_index.items():
+        by_seqid.setdefault(gene.seqid, []).append(
+            (gene.start, gene.end, gene_name)
+        )
+    for intervals in by_seqid.values():
+        intervals.sort(key=lambda x: x[0])
+    return by_seqid
+
+
+def find_gene_at_position_fast(
+    seqid: str,
+    pos: int,
+    genomic_map: Dict[str, List[Tuple[int, int, str]]],
+) -> Optional[str]:
+    """Fast gene lookup using a pre-built genomic map. Returns gene name or None."""
+    intervals = genomic_map.get(seqid)
+    if not intervals:
+        return None
+    for start, end, gene_name in intervals:
+        if start <= pos <= end:
+            return gene_name
+        if start > pos:
+            break
+    return None

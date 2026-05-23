@@ -53,6 +53,7 @@ class OffTargetAmplicon:
     right_hit: BlastHit
     product_size: int
     chromosome: str
+    gene_name: str = ""
 
 
 @dataclass
@@ -310,6 +311,7 @@ def check_pair_specificity(
     right_hits: List[BlastHit],
     max_amplicon_size: int = DEFAULT_MAX_AMPLICON_SIZE,
     min_off_target_product: int = 50,
+    genomic_gene_map: dict = None,
 ) -> List[OffTargetAmplicon]:
     """Check if any left+right hit combination could produce an off-target amplicon.
 
@@ -318,6 +320,9 @@ def check_pair_specificity(
     2. The primers bind in opposite orientations (one forward, one reverse)
     3. Their binding sites are within max_amplicon_size and above min_off_target_product
     4. Their 3' ends face each other
+
+    If genomic_gene_map is provided (from gff_index.build_genomic_gene_map),
+    each OffTargetAmplicon will be annotated with the overlapping gene name.
 
     Returns:
         List of OffTargetAmplicon objects.
@@ -363,20 +368,34 @@ def check_pair_specificity(
                     if l_3prime < r_3prime:
                         product_size = r_3prime - l_3prime
                         if min_off_target_product <= product_size <= max_amplicon_size:
+                            gene_name = _lookup_gene(l_hit, r_hit, chr_id, genomic_gene_map)
                             off_targets.append(OffTargetAmplicon(
                                 left_hit=l_hit, right_hit=r_hit,
                                 product_size=product_size, chromosome=chr_id,
+                                gene_name=gene_name,
                             ))
                 elif not l_on_reverse and r_on_reverse:
                     if r_3prime < l_3prime:
                         product_size = l_3prime - r_3prime
                         if min_off_target_product <= product_size <= max_amplicon_size:
+                            gene_name = _lookup_gene(l_hit, r_hit, chr_id, genomic_gene_map)
                             off_targets.append(OffTargetAmplicon(
                                 left_hit=l_hit, right_hit=r_hit,
                                 product_size=product_size, chromosome=chr_id,
+                                gene_name=gene_name,
                             ))
 
     return off_targets
+
+
+def _lookup_gene(l_hit, r_hit, chr_id, genomic_gene_map):
+    """Look up gene name for an off-target amplicon position."""
+    if not genomic_gene_map:
+        return ""
+    from .gff_index import find_gene_at_position_fast
+    mid_pos = (l_hit.subject_start + r_hit.subject_end) // 2
+    gene_name = find_gene_at_position_fast(chr_id, mid_pos, genomic_gene_map)
+    return gene_name or ""
 
 
 def evaluate_specificity(
@@ -387,7 +406,9 @@ def evaluate_specificity(
     target_right_coords: Tuple[int, int],
     max_mismatches: int = DEFAULT_MAX_OFF_TARGET_MISMATCH,
     min_3prime_match: int = DEFAULT_MIN_3PRIME_MATCH,
+    min_alignment_cover: float = 0.75,
     max_amplicon_size: int = DEFAULT_MAX_AMPLICON_SIZE,
+    genomic_gene_map: dict = None,
 ) -> SpecificityResult:
     """Perform full specificity evaluation for a primer pair.
 
@@ -399,6 +420,7 @@ def evaluate_specificity(
         target_right_coords: (start, end) of right primer's intended binding site.
         max_mismatches: Max mismatches allowed for off-target concern.
         min_3prime_match: Min consecutive 3' end matches required.
+        min_alignment_cover: Min fraction of primer covered by alignment.
         max_amplicon_size: Max amplicon size for off-target detection.
 
     Returns:
@@ -411,16 +433,17 @@ def evaluate_specificity(
     # Filter for potential off-target hits
     left_off = filter_specific_hits(
         left_hits, target_seqid, target_left_coords,
-        max_mismatches, min_3prime_match,
+        max_mismatches, min_3prime_match, min_alignment_cover,
     )
     right_off = filter_specific_hits(
         right_hits, target_seqid, target_right_coords,
-        max_mismatches, min_3prime_match,
+        max_mismatches, min_3prime_match, min_alignment_cover,
     )
 
     # Check pair-level off-target amplicons
     off_amplicons = check_pair_specificity(
         left_off, right_off, max_amplicon_size,
+        genomic_gene_map=genomic_gene_map,
     )
 
     is_specific = len(off_amplicons) == 0

@@ -5,11 +5,16 @@ Local primer design and specificity checking tool for _Glycine max_ (soybean), r
 ## Features
 
 - **Primer design** via Primer3 with customizable parameters (Tm, GC%, product size)
-- **Genome-wide specificity checking** via local BLAST against the Wm82.a4.v1 reference
+- **Genome-wide specificity checking** via local BLAST with 4-level sensitivity presets (strict/standard/sensitive/relaxed)
+- **Off-target gene annotation** — displays overlapping gene names for off-target amplicons
+- **Separate DNA/cDNA amplicon display** — genomic product (with introns) vs spliced cDNA product clearly distinguished
+- **Soybean-Arabidopsis annotation** — gene function, GO terms, and Arabidopsis homolog display
 - **GFF3-aware gene targeting** — design primers against specific genes, CDS regions, or genomic intervals
-- **Web interface** (Flask) replicating the NCBI Primer-BLAST interactive experience
-- **CLI** for batch/scripted use with text, JSON, and TSV output formats
-- **Primer quality scoring** — GC balance, 3′ stability, self-complementarity, penalty evaluation
+- **GenBank export** — one-click download (.gb) with gene/CDS/exon/primer_bind features + annotation
+- **Batch GenBank export** — multi-gene template export for downstream work
+- **Web interface** (Flask) with gene annotation panel, sensitivity control, and interactive results
+- **CLI** for batch/scripted use with text, JSON, TSV, and GenBank output formats
+- **Primer quality scoring** — 100-point scale across GC, Tm, 3′ stability, dimers, and hairpin
 - **Automatic fallback** — retries with relaxed constraints when no primers pass default filters
 
 ## Requirements
@@ -34,8 +39,10 @@ Download the soybean reference genome and annotation:
 |------|------|--------|
 | `Gmax_508_v4.0.fa` | ~945 MB | [Phytozome / SoyBase](https://phytozome-next.jgi.doe.gov/info/Gmax_Wm82_a4_v1) |
 | `Gmax_508_Wm82.a4.v1.gene.gff3` | ~119 MB | [Phytozome / SoyBase](https://phytozome-next.jgi.doe.gov/info/Gmax_Wm82_a4_v1) |
+| `Gmax_508_Wm82.a4.v1.transcript_primaryTranscriptOnly.fa` | ~96 MB | [Phytozome / SoyBase](https://phytozome-next.jgi.doe.gov/info/Gmax_Wm82_a4_v1) |
+| `Soybean_Arabidopsis_Complete_Annotation.tsv` | ~10 MB | Project supplement (soybean-Arabidopsis homology annotation) |
 
-Place both files in the project root. The GFF3 index is auto-built on first run.
+Place all files in the project root. Indices are auto-built on first run.
 
 Configure BLAST binary paths in `primer_blast/constants.py` if they are not on your system PATH.
 
@@ -55,6 +62,9 @@ python -m primer_blast --gene Glyma.13G357600 --format json
 
 # Custom parameters
 python -m primer_blast --gene Glyma.13G357600 --product-size 100-300 --num-return 3
+
+# GenBank export
+python -m primer_blast --gene Glyma.13G357600 --format genbank -o primers.gb
 ```
 
 ### Web Server
